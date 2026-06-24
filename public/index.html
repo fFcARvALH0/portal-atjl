@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal de Legislação e Jurisprudência — Supremo Tribunal de Justiça</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&family=Merriweather:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">Saltar para o conteúdo principal</a>
+
+  <div id="topbar">
+    <button class="logo-wrap" onclick="STJ.navegar('home')" aria-label="Ir para a página inicial">
+      <span class="logo-icon" aria-hidden="true">STJ</span>
+      <span class="logo-text-wrap">
+        <span class="lt1" id="hdr-nome">Portal de Legislação e Jurisprudência</span>
+        <span class="lt2" id="hdr-trib">Supremo Tribunal de Justiça</span>
+        <span class="lt3" id="hdr-lema">Pela Defesa do Direito e da Justiça</span>
+      </span>
+    </button>
+    <div class="topbar-right">
+      <span id="utilizador-info" style="font-size:12px;color:var(--mid);display:none"></span>
+      <button class="topbar-link" onclick="STJ.navegar('admin')" title="Acesso para magistrados e funcionários autorizados">Área Reservada</button>
+    </div>
+  </div>
+
+  <div id="hero">
+    <div>
+      <div class="hero-label">Supremo Tribunal de Justiça</div>
+      <div class="hero-title">Portal de Legislação e Jurisprudência</div>
+    </div>
+  </div>
+
+  <nav id="navbar" aria-label="Navegação principal">
+    <div class="nav-items">
+      <button class="nav-btn active" data-view="home" onclick="STJ.navegar('home')">Início</button>
+      <button class="nav-btn" data-view="legislacao" onclick="STJ.navegar('legislacao')">Legislação</button>
+      <button class="nav-btn" data-view="jurisprudencia" onclick="STJ.navegar('jurisprudencia')">Jurisprudência</button>
+      <button class="nav-btn" data-view="pesquisa" onclick="STJ.navegar('pesquisa')">Pesquisa Avançada</button>
+    </div>
+  </nav>
+
+  <main id="main" role="main" aria-live="polite"></main>
+
+  <footer style="text-align:center;padding:1.5rem;font-size:11px;color:var(--muted)">
+    Supremo Tribunal de Justiça · República Portucalense<br>
+    <a href="#" onclick="STJ.navegar('privacidade');return false" style="color:var(--red);font-weight:600">Política de Privacidade (RGPD)</a>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="assertive"></div>
+
+  <script src="/js/core.js"></script>
+  <script src="/js/vistas.js"></script>
+  <script src="/js/admin.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', STJ.iniciar);</script>
+</body>
+</html>
