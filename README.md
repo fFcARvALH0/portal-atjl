@@ -149,6 +149,56 @@ Netlify Blobs localmente.
 
 ---
 
+## Resolver erro de Netlify Blobs
+
+Se ao abrir o site aparecer o erro:
+
+```
+The environment has not been configured to use Netlify Blobs.
+To use it manually, supply the following properties when creating a
+store: siteID, token
+```
+
+Significa que a função não está a receber automaticamente o contexto
+do Netlify Blobs (acontece em alguns fluxos de deploy). A correção é
+fornecer o `siteID` e um `token` de forma explícita, através de duas
+variáveis de ambiente. O código já está preparado para usar estas
+variáveis se existirem (ver `lib/db.js`).
+
+### Obter o Site ID
+
+1. No painel do Netlify, abra o seu site.
+2. Vá a **Site configuration → General → Site details**.
+3. Copie o valor de **Site ID** (um código tipo `a1b2c3d4-e5f6-...`).
+
+### Gerar um Personal Access Token
+
+1. Clique no seu avatar (canto superior direito) → **User settings**.
+2. Vá a **Applications → Personal access tokens**.
+3. Clique em **New access token**, dê um nome (ex: `portal-atjl-blobs`) e gere.
+4. **Copie o token imediatamente** — só é mostrado uma vez.
+
+### Adicionar as variáveis ao site
+
+1. Volte ao seu site → **Site configuration → Environment variables**.
+2. Adicione:
+
+| Key | Value |
+|---|---|
+| `NETLIFY_SITE_ID` | o Site ID copiado acima |
+| `NETLIFY_BLOBS_TOKEN` | o Personal Access Token copiado acima |
+
+3. Vá a **Deploys → Trigger deploy → Deploy site** para aplicar.
+4. Abra o site novamente — o erro deve desaparecer.
+
+> Estas duas variáveis são só um mecanismo de recurso. Se o seu site
+> estiver corretamente ligado a um repositório Git (deploy automático,
+> não manual/drag-and-drop), o Netlify Blobs normalmente funciona sem
+> precisar destas variáveis. Mas não há problema em as deixar
+> configuradas de qualquer forma — o código usa-as sempre que existem.
+
+---
+
 ## Papéis e permissões (RBAC) — sem alterações
 
 | Papel | Permissões |

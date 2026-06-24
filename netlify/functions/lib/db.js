@@ -49,7 +49,26 @@ function _cacheDel(chave) {
 
 /* ── Acesso genérico a um "store" (tabela) ──────────────────────── */
 
+/**
+ * Cria/obtém um store do Netlify Blobs.
+ *
+ * Em sites publicados via Git, o Netlify injeta automaticamente o
+ * contexto (siteID + token) nas funções, e getStore(nome) funciona
+ * sem mais nada. Em alguns ambientes (ex: certos fluxos de deploy,
+ * ou execução fora do runtime padrão do Netlify) esse contexto
+ * automático não chega à função, resultando no erro:
+ *   "The environment has not been configured to use Netlify Blobs."
+ *
+ * Para cobrir esse caso, se existirem as variáveis de ambiente
+ * NETLIFY_SITE_ID e NETLIFY_BLOBS_TOKEN, usamos configuração manual
+ * explícita. Caso não existam, cai-se no modo automático normal.
+ */
 function _store(nome) {
+  const siteID = process.env.NETLIFY_SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN;
+  if (siteID && token) {
+    return getStore({ name: nome, siteID, token });
+  }
   return getStore(nome);
 }
 
