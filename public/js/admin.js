@@ -335,10 +335,17 @@ STJ.admin.artigosList = async function () {
 };
 
 STJ.admin.artigoForm = async function (id) {
-  var artigo = null;
-  if (id) { var todos = await STJ.api('listarLeis'); var t2 = await STJ.api('obterLei', { id: STJ.estado._leiId || (todos[0] ? todos[0].id : null) }); if (t2) artigo = (t2.artigos || []).find(function (a) { return a.id === id; }); }
+  // PERF-03: uma só chamada a listarLeis, reutilizada para o <select> e
+  // para encontrar a lei do artigo em edição (antes havia duas chamadas
+  // idênticas e sequenciais).
   var leis = await STJ.api('listarLeis');
-  var leiId = (artigo && artigo.leiId) || STJ.estado._leiId || (leis[0] ? leis[0].id : null);
+  var artigo = null;
+  var leiIdAtual = STJ.estado._leiId || (leis[0] ? leis[0].id : null);
+  if (id) {
+    var t2 = await STJ.api('obterLei', { id: leiIdAtual });
+    if (t2) artigo = (t2.artigos || []).find(function (a) { return a.id === id; });
+  }
+  var leiId = (artigo && artigo.leiId) || leiIdAtual;
   var h = STJ.h;
   var optLeis = leis.map(function (l) { return '<option value="' + h(l.id) + '"' + (l.id === leiId ? ' selected' : '') + '>' + h(l.numero) + ' — ' + h(l.titulo) + '</option>'; }).join('');
   return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">' + (artigo ? 'Editar Artigo' : 'Novo Artigo') + '</span><button class="btn btn-outline btn-sm" onclick="STJ.admin.nav(\'artigos\')">‹ Voltar</button></div>' +
@@ -379,16 +386,23 @@ STJ.admin._delArtigo = async function (id) {
 /* ── INTERPRETAÇÕES ─────────────────────────────────────────────── */
 STJ.admin.interpPanel = async function () {
   var leis = await STJ.api('listarLeis');
+  // PERF-02: pedidos em paralelo em vez de N+1 sequenciais.
+  var respostas = await Promise.all(leis.map(function (l) { return STJ.api('obterLei', { id: l.id }); }));
   var todos = [];
-  for (var i = 0; i < leis.length; i++) {
-    var resp = await STJ.api('obterLei', { id: leis[i].id });
-    if (resp && resp.artigos) { resp.artigos.filter(function (a) { return a.interpretacaoTexto; }).forEach(function (a) { a._leiNumero = leis[i].numero; todos.push(a); }); }
-  }
+  respostas.forEach(function (resp, i) {
+    if (resp && resp.artigos) {
+      resp.artigos.filter(function (a) { return a.interpretacaoTexto; }).forEach(function (a) {
+        a._leiNumero = leis[i].numero;
+        a._leiId = leis[i].id; // BUG-03/08: necessário para o link "Editar" abaixo encontrar o artigo
+        todos.push(a);
+      });
+    }
+  });
   var h = STJ.h;
   var rows = todos.map(function (a) {
     return '<tr><td>' + h(a._leiNumero || '—') + '</td><td><strong>' + h(a.numero) + '</strong>' + (a.titulo ? ' — ' + h(a.titulo) : '') + '</td>' +
       '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic;color:var(--muted)">' + h(a.interpretacaoTexto) + '</td>' +
-      '<td><button class="btn btn-outline btn-sm" onclick="STJ.estado._editId=\'' + h(a.id) + '\';STJ.admin.nav(\'artigo-edit\')">Editar</button></td></tr>';
+      '<td><button class="btn btn-outline btn-sm" onclick="STJ.estado._editId=\'' + h(a.id) + '\';STJ.estado._leiId=\'' + h(a._leiId) + '\';STJ.admin.nav(\'artigo-edit\')">Editar</button></td></tr>';
   }).join('') || '<tr><td colspan="4"><div class="empty-state"><p>Nenhuma interpretação registada.</p></div></td></tr>';
   return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">Interpretações STJ</span></div>' +
     '<div style="overflow-x:auto"><table class="manage-table"><thead><tr><th>Lei</th><th>Artigo</th><th>Excerto</th><th>Ação</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';

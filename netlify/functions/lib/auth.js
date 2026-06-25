@@ -21,6 +21,17 @@
  *
  * Mantido: sessões com token + CSRF, bloqueio temporário após várias
  * tentativas falhadas, RBAC (requerPermissao).
+ *
+ * CORREÇÕES NESTA REVISÃO:
+ *   - BUG-06: a store "sessoes" acumulava sessões expiradas, tentativas
+ *     falhadas e bloqueios para sempre. Foi adicionada uma purga
+ *     "lazy" (_purgarSessoesExpiradas), com um intervalo mínimo entre
+ *     execuções para não sobrecarregar o Netlify Blobs com escritas.
+ *   - BUG-07: `criarUtilizador`/`alterarRoleUtilizador` aceitavam
+ *     qualquer valor de `role`. Agora validam contra ROLES.
+ *   - Bónus: `validarUsername` (lib/security.js) estava definida mas
+ *     nunca era importada/usada — `criarUtilizador` aceitava qualquer
+ *     string como nome de utilizador. Agora é validada.
  * ════════════════════════════════════════════════════════════════════
  */
 
@@ -29,8 +40,40 @@ const crypto = require('crypto');
 const db = require('./db');
 const { STORES, SEGURANCA, ROLES, PERMISSOES } = require('./config');
 const { logarAuditoria } = require('./audit');
+const { validarUsername } = require('./security');
 
 const SALT_ROUNDS = 10;
+const ROLES_VALIDOS = Object.values(ROLES);
+
+function _roleValido(role) {
+  return ROLES_VALIDOS.indexOf(role) !== -1;
+}
+
+/* ── Purga de sessões/tentativas/bloqueios expirados (BUG-06) ─────
+   Em vez de uma Netlify Scheduled Function separada (que exigiria um
+   novo ficheiro/cron fora do âmbito desta correção), a purga corre de
+   forma "lazy": é despoletada pelas operações mais frequentes
+   (obterSessao, autenticar) mas só executa de facto, no máximo, uma
+   vez a cada INTERVALO_LIMPEZA_MS por instância — evita transformar
+   cada pedido num "ler tudo + escrever tudo" na store de sessões. */
+let _ultimaLimpeza = 0;
+const INTERVALO_LIMPEZA_MS = 10 * 60 * 1000; // 10 minutos
+
+async function _purgarSessoesExpiradas() {
+  const agora = Date.now();
+  if (agora - _ultimaLimpeza < INTERVALO_LIMPEZA_MS) return;
+  _ultimaLimpeza = agora;
+  try {
+    const lista = await db.listarTudo(STORES.SESSOES);
+    const validas = lista.filter((s) => !s.expiraEm || agora <= s.expiraEm);
+    if (validas.length < lista.length) {
+      await db.gravarTudo(STORES.SESSOES, validas);
+    }
+  } catch (e) {
+    // A purga nunca deve impedir login/verificação de sessão de funcionar.
+    console.error('Falha ao purgar sessões expiradas:', e.message);
+  }
+}
 
 /* ── Hashing de password ───────────────────────────────────────── */
 
@@ -86,6 +129,8 @@ async function _limparTentativas(username) {
 async function autenticar(username, password) {
   username = String(username || '').trim().toLowerCase();
 
+  await _purgarSessoesExpiradas();
+
   const bloqueio = await _getBloqueio(username);
   if (bloqueio) {
     return { ok: false, erro: 'Conta temporariamente bloqueada por demasiadas tentativas falhadas. Tente novamente mais tarde.' };
@@ -139,6 +184,7 @@ async function _criarSessao(user) {
 
 async function obterSessao(token) {
   if (!token) return null;
+  await _purgarSessoesExpiradas();
   const lista = await db.listarTudo(STORES.SESSOES);
   const sessao = lista.find((s) => s.tipo === 'sessao' && s.token === token);
   if (!sessao) return null;
@@ -195,6 +241,12 @@ async function criarUtilizador(token, csrf, dados) {
   const sessao = await requerPermissao(token, csrf, 'gerir_utilizadores');
   const username = String(dados.username || '').trim().toLowerCase();
   if (!username) return { ok: false, erro: 'Indique um nome de utilizador.' };
+  if (!validarUsername(username)) {
+    return { ok: false, erro: 'Nome de utilizador inválido. Use 3-40 caracteres: letras, números, ponto, underscore ou hífen.' };
+  }
+  if (dados.role && !_roleValido(dados.role)) {
+    return { ok: false, erro: 'Papel de utilizador inválido. Use um de: ' + ROLES_VALIDOS.join(', ') + '.' };
+  }
 
   const existentes = await db.listarTudo(STORES.UTILIZADORES);
   if (existentes.some((u) => String(u.username).toLowerCase() === username)) {
@@ -224,6 +276,9 @@ async function criarUtilizador(token, csrf, dados) {
 
 async function alterarRoleUtilizador(token, csrf, username, novoRole, ativo) {
   const sessao = await requerPermissao(token, csrf, 'gerir_utilizadores');
+  if (novoRole && !_roleValido(novoRole)) {
+    return { ok: false, erro: 'Papel de utilizador inválido. Use um de: ' + ROLES_VALIDOS.join(', ') + '.' };
+  }
   const atualizado = await db.atualizar(STORES.UTILIZADORES, 'username', username, {
     ...(novoRole ? { role: novoRole } : {}),
     ...(ativo !== undefined ? { ativo } : {})

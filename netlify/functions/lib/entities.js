@@ -63,7 +63,14 @@ async function eliminarLei(id, utilizador) {
   await guardarVersao('Lei', id, atual, utilizador);
   await db.remover(STORES.LEIS, 'id', id);
   const artigos = (await db.listarTudo(STORES.ARTIGOS)).filter((a) => a.leiId === id);
+  const idsArtigos = artigos.map((a) => a.id);
   await db.removerVarios(STORES.ARTIGOS, 'leiId', [id]);
+  // Limpeza de dados dependentes (achado adicional, fora do relatório
+  // original): sem isto, relações acórdão↔artigo e favoritos de
+  // utilizadores continuavam a apontar para artigos/leis já eliminados,
+  // causando erros no cliente ao tentar abrir um favorito órfão.
+  if (idsArtigos.length) await db.removerVarios(STORES.RELACOES, 'artigoId', idsArtigos);
+  await db.removerVarios(STORES.FAVORITOS, 'entidadeId', [id].concat(idsArtigos));
   db.invalidarCache(['leis_lista', 'artigos_' + id]);
   await logarAuditoria(utilizador, 'eliminar', 'Lei', id, 'Lei "' + atual.numero + '" eliminada (com ' + artigos.length + ' artigos).');
 }
@@ -111,6 +118,9 @@ async function eliminarArtigo(id, utilizador) {
   if (!atual) return;
   await guardarVersao('Artigo', id, atual, utilizador);
   await db.remover(STORES.ARTIGOS, 'id', id);
+  // Limpeza de dados dependentes (achado adicional, fora do relatório original).
+  await db.remover(STORES.RELACOES, 'artigoId', id);
+  await db.remover(STORES.FAVORITOS, 'entidadeId', id);
   db.invalidarCache(['artigos_' + atual.leiId]);
   await logarAuditoria(utilizador, 'eliminar', 'Artigo', id, 'Artigo "' + atual.numero + '" eliminado.');
 }
@@ -122,6 +132,14 @@ async function importarArtigosEmLote(leiId, listaArtigos, utilizador) {
     await guardarVersao('Artigo', a.id, a, utilizador);
   }
   await db.removerVarios(STORES.ARTIGOS, 'leiId', [leiId]);
+  // Limpeza de dados dependentes (achado adicional, fora do relatório
+  // original): os artigos substituídos deixam de existir, por isso as
+  // relações/favoritos que apontavam para os IDs antigos ficavam órfãos.
+  const idsAntigos = existentes.map((a) => a.id);
+  if (idsAntigos.length) {
+    await db.removerVarios(STORES.RELACOES, 'artigoId', idsAntigos);
+    await db.removerVarios(STORES.FAVORITOS, 'entidadeId', idsAntigos);
+  }
 
   const agora = new Date().toISOString();
   const novosArtigos = listaArtigos.map((a, i) => Object.assign({}, a, { id: db.gerarId(), leiId, ordem: i, atualizado: agora }));
@@ -178,6 +196,9 @@ async function eliminarAcordao(id, utilizador) {
   if (!atual) return;
   await guardarVersao('Acordao', id, atual, utilizador);
   await db.remover(STORES.ACORDAOS, 'id', id);
+  // Limpeza de dados dependentes (achado adicional, fora do relatório original).
+  await db.remover(STORES.RELACOES, 'acordaoId', id);
+  await db.remover(STORES.FAVORITOS, 'entidadeId', id);
   db.invalidarCache(['acordaos_lista']);
   await logarAuditoria(utilizador, 'eliminar', 'Acordao', id, 'Acórdão "' + atual.numero + '" eliminado.');
 }

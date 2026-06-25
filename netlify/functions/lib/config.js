@@ -55,7 +55,15 @@ const SEGURANCA = {
   SESSAO_DURACAO_SEG: 6 * 60 * 60,
   MAX_TENTATIVAS_LOGIN: 5,
   BLOQUEIO_LOGIN_SEG: 15 * 60,
-  CACHE_LISTAS_TTL_SEG: 5 * 60
+  // NOTA: reduzido de 5 min para 20s. A cache de listas é um Map em
+  // memória do PROCESSO (ver lib/db.js). Como o Netlify pode ter várias
+  // instâncias "warm" em paralelo, invalidar a cache numa instância (após
+  // uma escrita) não invalida a cache de outra instância — esta só
+  // expira pelo TTL. Um TTL de 5 minutos podia mostrar listas
+  // desatualizadas a alguns utilizadores por bastante tempo depois de um
+  // admin publicar/editar algo. 20s continua a poupar leituras repetidas
+  // dentro da mesma instância sem um atraso percetível para o utilizador.
+  CACHE_LISTAS_TTL_SEG: 20
 };
 
 const LIMITES_TEXTO = {

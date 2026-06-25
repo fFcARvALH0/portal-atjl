@@ -13,6 +13,28 @@
  *
  * O ficheiro netlify.toml redireciona /api/* para esta function, por
  * isso o cliente chama simplesmente fetch('/api', {method:'POST', ...}).
+ *
+ * CORREÇÕES NESTA REVISÃO:
+ *   - SEC-01: CORS deixou de devolver '*' — passa a restringir à
+ *     origem do próprio site (process.env.URL, definida automaticamente
+ *     pelo Netlify) quando configurada.
+ *   - SEC-03: rate limiting básico por IP, em memória do processo.
+ *     NOTA HONESTA: isto é "melhor que nada", não é um rate limiter
+ *     distribuído — cada instância "warm" do Netlify tem o seu próprio
+ *     contador. Para limitar de forma robusta entre todas as instâncias
+ *     simultaneamente, a solução correta é uma Netlify Edge Function
+ *     com um store partilhado (ver NETLIFY-02 no relatório de
+ *     auditoria). Ainda assim, isto já impede abuso trivial de um
+ *     único cliente/IP dentro da mesma instância.
+ *   - SEC-06: lookup de `action` protegido com hasOwnProperty para
+ *     evitar que nomes como "constructor"/"toString" resolvam para
+ *     propriedades herdadas do Object.prototype.
+ *   - PERF-04: respostas de ações de leitura pública incluem
+ *     Cache-Control. NOTA: como este endpoint usa sempre POST, o CDN
+ *     do Netlify normalmente não cacheia a resposta (CDNs só cacheiam
+ *     GET/HEAD por defeito) — o header fica pronto para quando/se
+ *     estas ações forem expostas também via GET, e ainda ajuda caches
+ *     de cliente que respeitem o header explicitamente.
  * ════════════════════════════════════════════════════════════════════
  */
 
@@ -28,6 +50,47 @@ const parser = require('./lib/parser');
 const pdfExport = require('./lib/pdfExport');
 const { sanitizarObjeto } = require('./lib/security');
 const { garantirSetupInicial } = require('./lib/seed');
+
+/* ── Rate limiting básico por IP (SEC-03) ──────────────────────────
+   Em memória do processo. Ver nota acima sobre as limitações. */
+const _rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_PEDIDOS = 120; // por IP, por minuto, por instância
+
+function _obterIp(event) {
+  const h = event.headers || {};
+  return h['x-nf-client-connection-ip'] || h['client-ip'] ||
+    (h['x-forwarded-for'] ? h['x-forwarded-for'].split(',')[0].trim() : null) || 'desconhecido';
+}
+
+function _limiteExcedido(ip) {
+  const agora = Date.now();
+  // Purga oportunista para não deixar o Map crescer indefinidamente.
+  if (_rateLimitMap.size > 5000) {
+    _rateLimitMap.forEach((v, k) => { if (agora > v.resetEm) _rateLimitMap.delete(k); });
+  }
+  const registo = _rateLimitMap.get(ip);
+  if (!registo || agora > registo.resetEm) {
+    _rateLimitMap.set(ip, { contagem: 1, resetEm: agora + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  registo.contagem += 1;
+  return registo.contagem > RATE_LIMIT_MAX_PEDIDOS;
+}
+
+/* ── Lookup seguro de ações (SEC-06) ───────────────────────────────── */
+function _obterAcao(mapa, action) {
+  return Object.prototype.hasOwnProperty.call(mapa, action) ? mapa[action] : null;
+}
+
+/* ── Ações cujo resultado pode ser indicado como cacheável (PERF-04) ── */
+const TTL_CACHE_SEG = {
+  infoPublica: 300,
+  listarLeis: 60,
+  obterLei: 60,
+  listarAcordaos: 60,
+  obterAcordao: 60
+};
 
 /* ── Mapa de ações públicas (sem autenticação) ────────────────────── */
 
@@ -133,9 +196,19 @@ const ACOES_AUTENTICADAS = {
 /* ── Handler da Netlify Function ──────────────────────────────────── */
 
 exports.handler = async (event) => {
+  // SEC-01: CORS restrito à origem do próprio site. process.env.URL é
+  // definida automaticamente pelo Netlify com o URL principal do site
+  // (ex: https://portal-atjl.netlify.app). Em deploy previews/branch
+  // deploys, process.env.DEPLOY_PRIME_URL cobre esse caso também.
+  // Se nenhuma das duas estiver definida (ex: ambiente local sem
+  // `netlify dev` configurado), cai-se em '*' como rede de segurança
+  // para não bloquear o desenvolvimento — mas em produção normal do
+  // Netlify estas variáveis estão sempre presentes.
+  const origemPermitida = process.env.URL || process.env.DEPLOY_PRIME_URL || '*';
   const headersCORS = {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': origemPermitida,
+    'Vary': 'Origin',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS'
   };
@@ -147,6 +220,12 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: headersCORS, body: JSON.stringify({ ok: false, erro: 'Método não permitido.' }) };
   }
 
+  // SEC-03: rate limiting básico por IP (ver nota no topo do ficheiro).
+  const ip = _obterIp(event);
+  if (_limiteExcedido(ip)) {
+    return { statusCode: 429, headers: headersCORS, body: JSON.stringify({ ok: false, erro: 'Demasiados pedidos. Tente novamente dentro de um minuto.' }) };
+  }
+
   let body;
   try {
     body = JSON.parse(event.body || '{}');
@@ -155,18 +234,25 @@ exports.handler = async (event) => {
   }
 
   const { action, payload } = body;
-  const fn = ACOES_PUBLICAS[action] || ACOES_AUTENTICADAS[action];
+  // SEC-06: lookup protegido contra propriedades herdadas do Object.prototype.
+  const fn = _obterAcao(ACOES_PUBLICAS, action) || _obterAcao(ACOES_AUTENTICADAS, action);
 
   if (!fn) {
     return { statusCode: 404, headers: headersCORS, body: JSON.stringify({ ok: false, erro: 'Ação desconhecida: ' + action }) };
   }
 
+  // PERF-04: cache curta para ações de leitura pública (ver nota no topo).
+  const ttl = TTL_CACHE_SEG[action];
+  const headersResposta = ttl
+    ? Object.assign({}, headersCORS, { 'Cache-Control': 'public, s-maxage=' + ttl + ', stale-while-revalidate=30' })
+    : Object.assign({}, headersCORS, { 'Cache-Control': 'no-store' });
+
   try {
     await garantirSetupInicial();
     const dados = await fn(payload || {});
-    return { statusCode: 200, headers: headersCORS, body: JSON.stringify({ ok: true, dados }) };
+    return { statusCode: 200, headers: headersResposta, body: JSON.stringify({ ok: true, dados }) };
   } catch (e) {
     console.error('Erro API [' + action + ']:', e.message);
-    return { statusCode: 200, headers: headersCORS, body: JSON.stringify({ ok: false, erro: e.message || 'Erro desconhecido.' }) };
+    return { statusCode: 200, headers: Object.assign({}, headersCORS, { 'Cache-Control': 'no-store' }), body: JSON.stringify({ ok: false, erro: e.message || 'Erro desconhecido.' }) };
   }
 };

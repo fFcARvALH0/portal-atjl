@@ -7,8 +7,9 @@
 
 /* ── HOME ─────────────────────────────────────────────────────────── */
 STJ.vistas.home = async function () {
-  var leis = await STJ.api('listarLeis');
-  var acs  = await STJ.api('listarAcordaos');
+  // PERF-01: pedidos em paralelo em vez de sequenciais.
+  var resultadosHome = await Promise.all([STJ.api('listarLeis'), STJ.api('listarAcordaos')]);
+  var leis = resultadosHome[0], acs = resultadosHome[1];
   var h = STJ.h, sd = STJ.stBadge, fd = STJ.fmtDate;
 
   var listaLeis = (leis || []).slice(0, 5).map(function (l) {
@@ -238,14 +239,24 @@ STJ.vistas.acordaoDetalhe = async function () {
 STJ.vistas.pesquisa = async function () {
   var q = STJ.estado.searchQuery || '';
   var f = STJ.estado.searchFilters;
-  var resultados = q ? (await STJ.api('pesquisar', { query: q, filtros: f }) || []) : [];
-  var pesqGuardadas = STJ.estado.sessao ? (await STJ.apiAuth('listarPesquisasGuardadas') || []) : [];
+  // PERF-01: pedidos em paralelo em vez de sequenciais.
+  var resultadosPesquisa = await Promise.all([
+    q ? STJ.api('pesquisar', { query: q, filtros: f }) : Promise.resolve([]),
+    STJ.estado.sessao ? STJ.apiAuth('listarPesquisasGuardadas') : Promise.resolve([])
+  ]);
+  var resultados = resultadosPesquisa[0] || [];
+  var pesqGuardadas = resultadosPesquisa[1] || [];
+  // BUG-02: cache a lista em STJ (em vez de embutir JSON.stringify(p)
+  // num atributo onclick="" — isso quebra o HTML com aspas duplas
+  // sempre que o nome/query/filtros da pesquisa guardada contiverem
+  // aspas, comuns em contexto jurídico). Referenciamos por índice.
+  STJ._pesqGuardadasCache = pesqGuardadas;
   var h = STJ.h, sd = STJ.stBadge;
 
   var cartoesPesq = pesqGuardadas.length
     ? '<div style="margin-bottom:1rem"><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">As minhas pesquisas guardadas</div>' +
       '<div style="display:flex;gap:.4rem;flex-wrap:wrap">' +
-      pesqGuardadas.map(function (p) { return '<button class="btn btn-outline btn-sm" onclick="STJ.vistas._carregarPesquisaGuardada(' + JSON.stringify(p) + ')">' + h(p.nome) + '</button>'; }).join('') + '</div></div>'
+      pesqGuardadas.map(function (p, i) { return '<button class="btn btn-outline btn-sm" onclick="STJ.vistas._carregarPesquisaGuardada(' + i + ')">' + h(p.nome) + '</button>'; }).join('') + '</div></div>'
     : '';
 
   var linhasResultados = resultados.map(function (r) {
@@ -288,7 +299,9 @@ STJ.vistas._pesquisar = function () {
   STJ.render();
 };
 
-STJ.vistas._carregarPesquisaGuardada = function (p) {
+STJ.vistas._carregarPesquisaGuardada = function (indice) {
+  var p = (STJ._pesqGuardadasCache || [])[indice];
+  if (!p) { STJ.toast('Pesquisa guardada não encontrada.'); return; }
   STJ.estado.searchQuery = p.query;
   STJ.estado.searchFilters = p.filtros || { tipo: 'todos' };
   STJ.render();

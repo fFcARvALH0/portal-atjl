@@ -5,6 +5,15 @@
  * ════════════════════════════════════════════════════════════════════
  * Pesquisa por relevância com expansão de sinónimos jurídicos,
  * pontuação por campo e filtros combináveis.
+ *
+ * CORREÇÃO (SEC-05):
+ *   `listarPesquisasGuardadas` devolvia `JSON.parse(p.filtrosJSON)`
+ *   diretamente ao cliente, sem validar a estrutura — um registo
+ *   manipulado diretamente via API podia conter campos arbitrários.
+ *   `_sanitizarFiltros` aplica uma whitelist (só `tipo` — de um
+ *   conjunto fechado de valores — e `area`, como texto curto) tanto ao
+ *   guardar como ao listar, e o parse fica protegido com try/catch
+ *   para não rebentar com JSON inválido.
  * ════════════════════════════════════════════════════════════════════
  */
 
@@ -74,12 +83,23 @@ async function pesquisarPortal(query, filtros) {
 
 /* ── Pesquisas guardadas ──────────────────────────────────────── */
 
+const _TIPOS_FILTRO_VALIDOS = ['todos', 'leis', 'acordaos', 'interp'];
+
+/** Whitelist de estrutura — só os campos que pesquisarPortal realmente usa. */
+function _sanitizarFiltros(filtros) {
+  const f = filtros || {};
+  return {
+    tipo: _TIPOS_FILTRO_VALIDOS.indexOf(f.tipo) !== -1 ? f.tipo : 'todos',
+    area: typeof f.area === 'string' ? sanitizarTexto(f.area, LIMITES_TEXTO.curto) : ''
+  };
+}
+
 async function guardarPesquisa(token, csrf, nome, query, filtros) {
   const sessao = await auth.requerPermissao(token, csrf, null);
   await db.inserir(STORES.PESQUISAS_GUARDADAS, {
     id: db.gerarId(), utilizador: sessao.username,
     nome: sanitizarTexto(nome, LIMITES_TEXTO.curto), query: sanitizarTexto(query, LIMITES_TEXTO.curto),
-    filtrosJSON: JSON.stringify(filtros || {}), criado: new Date().toISOString()
+    filtrosJSON: JSON.stringify(_sanitizarFiltros(filtros)), criado: new Date().toISOString()
   });
   return { ok: true };
 }
@@ -88,7 +108,11 @@ async function listarPesquisasGuardadas(token, csrf) {
   const sessao = await auth.requerPermissao(token, csrf, null);
   return (await db.listarTudo(STORES.PESQUISAS_GUARDADAS))
     .filter((p) => p.utilizador === sessao.username)
-    .map((p) => ({ id: p.id, nome: p.nome, query: p.query, filtros: JSON.parse(p.filtrosJSON || '{}') }));
+    .map((p) => {
+      let filtrosBrutos = {};
+      try { filtrosBrutos = JSON.parse(p.filtrosJSON || '{}'); } catch (e) { filtrosBrutos = {}; }
+      return { id: p.id, nome: p.nome, query: p.query, filtros: _sanitizarFiltros(filtrosBrutos) };
+    });
 }
 
 async function eliminarPesquisaGuardada(token, csrf, id) {
