@@ -45,6 +45,20 @@ const { validarUsername } = require('./security');
 const SALT_ROUNDS = 10;
 const ROLES_VALIDOS = Object.values(ROLES);
 
+/**
+ * Valida a complexidade de uma password.
+ * Retorna null se válida, ou uma string com a mensagem de erro.
+ */
+function _validarComplexidadePassword(password) {
+  const pw = String(password || '');
+  if (pw.length < 10) return 'A password deve ter pelo menos 10 caracteres.';
+  if (!/[A-Z]/.test(pw)) return 'A password deve conter pelo menos uma letra maiúscula.';
+  if (!/[a-z]/.test(pw)) return 'A password deve conter pelo menos uma letra minúscula.';
+  if (!/[0-9]/.test(pw)) return 'A password deve conter pelo menos um número.';
+  if (!/[^A-Za-z0-9]/.test(pw)) return 'A password deve conter pelo menos um carácter especial (ex: !@#$%).';
+  return null;
+}
+
 function _roleValido(role) {
   return ROLES_VALIDOS.indexOf(role) !== -1;
 }
@@ -217,9 +231,8 @@ async function alterarPassword(token, csrf, passwordAtual, passwordNova) {
   if (!user) throw new Error('Utilizador não encontrado.');
   const valida = await verificarPassword(passwordAtual, user.passwordHash);
   if (!valida) return { ok: false, erro: 'Password atual incorreta.' };
-  if (String(passwordNova || '').length < 10) {
-    return { ok: false, erro: 'A nova password deve ter pelo menos 10 caracteres.' };
-  }
+  const erroComplexidade = _validarComplexidadePassword(passwordNova);
+  if (erroComplexidade) return { ok: false, erro: erroComplexidade };
   const novoHash = await hashPassword(passwordNova);
   await db.atualizar(STORES.UTILIZADORES, 'username', sessao.username, { passwordHash: novoHash, forcarMudancaPassword: false });
   await logarAuditoria(sessao.username, 'alterar_password', 'Utilizador', sessao.username, 'Password alterada pelo próprio utilizador.');
@@ -254,6 +267,10 @@ async function criarUtilizador(token, csrf, dados) {
   }
 
   const passwordTemp = dados.password || gerarPasswordTemporaria();
+  if (dados.password) {
+    const erroComplexidade = _validarComplexidadePassword(dados.password);
+    if (erroComplexidade) return { ok: false, erro: erroComplexidade };
+  }
   const hash = await hashPassword(passwordTemp);
   await db.inserir(STORES.UTILIZADORES, {
     username,
