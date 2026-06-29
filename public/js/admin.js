@@ -200,8 +200,8 @@ STJ.admin.importar = async function () {
       '<div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="Arraste um ficheiro ou clique para selecionar" onclick="document.getElementById(\'file-input\').click()" ondragover="event.preventDefault();this.classList.add(\'drag-over\')" ondragleave="this.classList.remove(\'drag-over\')" ondrop="STJ.admin._handleDrop(event)">' +
       '<div style="font-size:36px;margin-bottom:.6rem" aria-hidden="true">📄</div>' +
       '<p><strong>Arraste o ficheiro aqui</strong> ou clique para selecionar</p>' +
-      '<small>Suporta: .docx · .txt · .md — Máximo 10 MB</small></div>' +
-      '<input type="file" id="file-input" accept=".docx,.txt,.md,.text" onchange="STJ.admin._handleFileSelect(event)">' +
+      '<small>Suporta: .docx · .txt · .md · .pdf — Máximo 10 MB</small></div>' +
+      '<input type="file" id="file-input" accept=".docx,.txt,.md,.text,.pdf" onchange="STJ.admin._handleFileSelect(event)">' +
       '<div class="or-div">ou cole o texto diretamente</div>' +
       '<div class="f-row"><label for="imp-text">Texto do Documento</label><textarea id="imp-text" rows="12" placeholder="TÍTULO I — Das Disposições Gerais&#10;CAPÍTULO I — Âmbito&#10;Artigo 1.º&#10;Âmbito&#10;1. A presente lei..."></textarea></div>' +
       '<div style="display:flex;gap:.5rem"><button class="btn btn-red btn-lg" onclick="STJ.admin._importarPasso2()" ' + (!leis.length ? 'disabled' : '') + '>Analisar Documento →</button><button class="btn btn-outline" onclick="STJ.admin.nav(\'leis-list\')">Cancelar</button></div>' +
@@ -292,6 +292,17 @@ STJ.admin._processarFicheiro = function (file) {
       s.onload = function () { STJ.admin._lerDocx(file); };
       document.head.appendChild(s);
     } else { STJ.admin._lerDocx(file); }
+  } else if (n.endsWith('.pdf')) {
+    if (typeof pdfjsLib === 'undefined') {
+      var sp = document.createElement('script');
+      sp.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      sp.onload = function () {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        STJ.admin._lerPdf(file);
+      };
+      document.head.appendChild(sp);
+    } else { STJ.admin._lerPdf(file); }
   } else {
     var r = new FileReader();
     r.onload = function (ev) { var el = document.getElementById('imp-text'); if (el) el.value = ev.target.result; STJ.toast('Ficheiro lido.'); };
@@ -306,6 +317,47 @@ STJ.admin._lerDocx = function (file) {
       if (el) el.value = res.value;
       STJ.toast('Word lido. Reveja o texto antes de continuar.');
     }).catch(function (e) { STJ.toast('Erro ao ler .docx: ' + e.message); });
+  };
+  r.readAsArrayBuffer(file);
+};
+STJ.admin._lerPdf = function (file) {
+  STJ.toast('A ler PDF…');
+  var r = new FileReader();
+  r.onload = function (ev) {
+    var loadingTask = pdfjsLib.getDocument({ data: ev.target.result });
+    loadingTask.promise.then(function (pdf) {
+      var totalPages = pdf.numPages;
+      var pagePromises = [];
+      for (var i = 1; i <= totalPages; i++) {
+        pagePromises.push(
+          pdf.getPage(i).then(function (page) {
+            return page.getTextContent().then(function (tc) {
+              // Agrupa os itens de texto por linha usando a coordenada Y
+              var linhasPorY = {};
+              tc.items.forEach(function (item) {
+                var y = Math.round(item.transform[5]);
+                if (!linhasPorY[y]) linhasPorY[y] = [];
+                linhasPorY[y].push(item.str);
+              });
+              // Ordena as linhas de cima para baixo (Y decrescente em PDF)
+              return Object.keys(linhasPorY)
+                .map(Number)
+                .sort(function (a, b) { return b - a; })
+                .map(function (y) { return linhasPorY[y].join(''); })
+                .join('\n');
+            });
+          })
+        );
+      }
+      return Promise.all(pagePromises);
+    }).then(function (paginas) {
+      var texto = paginas.join('\n\n');
+      var el = document.getElementById('imp-text');
+      if (el) el.value = texto;
+      STJ.toast('PDF lido (' + paginas.length + ' página(s)). Reveja o texto antes de continuar.');
+    }).catch(function (e) {
+      STJ.toast('Erro ao ler PDF: ' + (e.message || e));
+    });
   };
   r.readAsArrayBuffer(file);
 };
