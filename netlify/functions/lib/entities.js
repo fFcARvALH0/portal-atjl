@@ -150,6 +150,20 @@ async function importarArtigosEmLote(leiId, listaArtigos, utilizador) {
   return { importados: novosArtigos.length, substituidos: existentes.length };
 }
 
+async function eliminarTodosArtigosDaLei(leiId, utilizador) {
+  const todos = await db.listarTudo(STORES.ARTIGOS);
+  const existentes = todos.filter((a) => a.leiId === leiId);
+  if (!existentes.length) return { eliminados: 0 };
+  for (const a of existentes) await guardarVersao('Artigo', a.id, a, utilizador);
+  await db.removerVarios(STORES.ARTIGOS, 'leiId', [leiId]);
+  const ids = existentes.map((a) => a.id);
+  await db.removerVarios(STORES.RELACOES, 'artigoId', ids);
+  await db.removerVarios(STORES.FAVORITOS, 'entidadeId', ids);
+  db.invalidarCache(['artigos_' + leiId]);
+  await logarAuditoria(utilizador, 'eliminar', 'Artigo', leiId, existentes.length + ' artigo(s) eliminados em lote da lei ' + leiId + '.');
+  return { eliminados: existentes.length };
+}
+
 /* ── ACÓRDÃOS ──────────────────────────────────────────────────── */
 
 async function listarAcordaos() {
@@ -205,6 +219,6 @@ async function eliminarAcordao(id, utilizador) {
 
 module.exports = {
   listarLeis, obterLei, criarLei, atualizarLei, eliminarLei,
-  listarArtigos, listarTodosArtigos, criarArtigo, atualizarArtigo, eliminarArtigo, importarArtigosEmLote,
+  listarArtigos, listarTodosArtigos, criarArtigo, atualizarArtigo, eliminarArtigo, importarArtigosEmLote, eliminarTodosArtigosDaLei,
   listarAcordaos, obterAcordao, criarAcordao, atualizarAcordao, eliminarAcordao
 };
