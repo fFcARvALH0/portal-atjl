@@ -68,11 +68,18 @@ async function pesquisarPortal(query, filtros) {
   }
   if (!filtros.tipo || filtros.tipo === 'todos' || filtros.tipo === 'interp') {
     const todosArtigos = await entities.listarTodosArtigos();
-    for (const a of todosArtigos.filter((x) => x.interpretacaoTexto)) {
-      const pontos = _pontuarTexto(a.interpretacaoTexto, termos) * 2 + _pontuarTexto(a.principios, termos);
-      if (pontos > 0) {
-        const lei = await entities.obterLei(a.leiId);
-        resultados.push({ tipo: 'Interpretação', id: a.id, leiId: a.leiId, titulo: a.numero + (a.titulo ? ' — ' + a.titulo : '') + (lei ? ' (' + lei.numero + ')' : ''), meta: lei ? lei.numero : '', excerto: a.interpretacaoTexto, estado: 'vigor', pontos });
+    const artigosComInterp = todosArtigos.filter((x) => x.interpretacaoTexto);
+    if (artigosComInterp.length > 0) {
+      // PERF: pré-carrega todas as leis de uma vez e indexa por id numa Map,
+      // evitando N chamadas await entities.obterLei() dentro do loop (N+1).
+      const todasLeis = await entities.listarLeis();
+      const leisPorId = new Map(todasLeis.map((l) => [l.id, l]));
+      for (const a of artigosComInterp) {
+        const pontos = _pontuarTexto(a.interpretacaoTexto, termos) * 2 + _pontuarTexto(a.principios, termos);
+        if (pontos > 0) {
+          const lei = leisPorId.get(a.leiId) || null;
+          resultados.push({ tipo: 'Interpretação', id: a.id, leiId: a.leiId, titulo: a.numero + (a.titulo ? ' — ' + a.titulo : '') + (lei ? ' (' + lei.numero + ')' : ''), meta: lei ? lei.numero : '', excerto: a.interpretacaoTexto, estado: 'vigor', pontos });
+        }
       }
     }
   }
