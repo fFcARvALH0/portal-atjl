@@ -148,6 +148,12 @@ const ACOES_AUTENTICADAS = {
     return entities.importarArtigosEmLote(leiId, listaArtigos, sessao.username);
   },
 
+  eliminarTodosArtigos: async ({ token, csrf, leiId }) => {
+    if (!leiId) throw new Error('leiId em falta.');
+    const sessao = await auth.requerPermissao(token, csrf, 'importar');
+    return entities.eliminarTodosArtigosDaLei(leiId, sessao.username);
+  },
+
   criarAcordao: async ({ token, csrf, dados }) => {
     const sessao = await auth.requerPermissao(token, csrf, 'gerir_acordaos');
     return entities.criarAcordao(sanitizarObjeto(dados, { sumario: LIMITES_TEXTO.longo, factos: LIMITES_TEXTO.longo, fundamentacao: LIMITES_TEXTO.longo, decisao: LIMITES_TEXTO.longo }), sessao.username);
