@@ -14,6 +14,15 @@
  *   conjunto fechado de valores — e `area`, como texto curto) tanto ao
  *   guardar como ao listar, e o parse fica protegido com try/catch
  *   para não rebentar com JSON inválido.
+ *
+ * CORREÇÃO (PERF-01):
+ *   `_expandirTermos` chamava `db.listarTudo(STORES.SINONIMOS)` —
+ *   uma leitura ao Netlify Blobs — em CADA pesquisa, apesar de os
+ *   sinónimos raramente mudarem (não há nenhum CRUD de sinónimos
+ *   exposto; só são populados uma vez em seed.js). Passa a usar o
+ *   mesmo cache em memória já usado em entities.js (db.cacheGet/
+ *   cachePut), com TTL próprio mais longo do que o das listas de
+ *   leis/acórdãos, por serem ainda mais estáveis.
  * ════════════════════════════════════════════════════════════════════
  */
 
@@ -24,9 +33,22 @@ const { LIMITES_TEXTO } = require('./config');
 const entities = require('./entities');
 const auth = require('./auth');
 
+/** Sinónimos mudam muito raramente — TTL de cache bem mais longo (10 min)
+ *  do que o das listas de leis/acórdãos (20s, ver SEGURANCA.CACHE_LISTAS_TTL_SEG). */
+const _SINONIMOS_CACHE_TTL_SEG = 10 * 60;
+
+async function _obterSinonimos() {
+  const cacheKey = 'sinonimos_lista';
+  const emCache = db.cacheGet(cacheKey);
+  if (emCache) return emCache;
+  const sinonimos = await db.listarTudo(STORES.SINONIMOS);
+  db.cachePut(cacheKey, sinonimos, _SINONIMOS_CACHE_TTL_SEG);
+  return sinonimos;
+}
+
 async function _expandirTermos(query) {
   const termos = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const sinonimos = await db.listarTudo(STORES.SINONIMOS);
+  const sinonimos = await _obterSinonimos();
   const expandido = new Set(termos);
   termos.forEach((t) => {
     sinonimos.forEach((s) => {
