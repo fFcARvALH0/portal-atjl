@@ -326,38 +326,27 @@ STJ.admin._lerPdf = function (file) {
   r.onload = function (ev) {
     var loadingTask = pdfjsLib.getDocument({ data: ev.target.result });
     loadingTask.promise.then(function (pdf) {
-      var totalPages = pdf.numPages;
       var pagePromises = [];
-      for (var i = 1; i <= totalPages; i++) {
-        pagePromises.push(
-          pdf.getPage(i).then(function (page) {
-            return page.getTextContent().then(function (tc) {
-              // Agrupa os itens de texto por linha usando a coordenada Y
-              var linhasPorY = {};
-              tc.items.forEach(function (item) {
-                var y = Math.round(item.transform[5]);
-                if (!linhasPorY[y]) linhasPorY[y] = [];
-                linhasPorY[y].push(item.str);
-              });
-              // Ordena as linhas de cima para baixo (Y decrescente em PDF)
-              return Object.keys(linhasPorY)
-                .map(Number)
-                .sort(function (a, b) { return b - a; })
-                .map(function (y) { return linhasPorY[y].join(''); })
-                .join('\n');
+      for (var i = 1; i <= pdf.numPages; i++) {
+        pagePromises.push(pdf.getPage(i).then(function (page) {
+          return page.getTextContent().then(function (tc) {
+            var linhasPorY = {};
+            tc.items.forEach(function (item) {
+              var y = Math.round(item.transform[5]);
+              if (!linhasPorY[y]) linhasPorY[y] = [];
+              linhasPorY[y].push(item.str);
             });
-          })
-        );
+            return Object.keys(linhasPorY).map(Number).sort(function (a, b) { return b - a; })
+              .map(function (y) { return linhasPorY[y].join(''); }).join('\n');
+          });
+        }));
       }
       return Promise.all(pagePromises);
     }).then(function (paginas) {
-      var texto = paginas.join('\n\n');
       var el = document.getElementById('imp-text');
-      if (el) el.value = texto;
+      if (el) el.value = paginas.join('\n\n');
       STJ.toast('PDF lido (' + paginas.length + ' página(s)). Reveja o texto antes de continuar.');
-    }).catch(function (e) {
-      STJ.toast('Erro ao ler PDF: ' + (e.message || e));
-    });
+    }).catch(function (e) { STJ.toast('Erro ao ler PDF: ' + (e.message || e)); });
   };
   r.readAsArrayBuffer(file);
 };
@@ -380,10 +369,20 @@ STJ.admin.artigosList = async function () {
   return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">Artigos</span><div style="display:flex;gap:.5rem">' +
     '<button class="btn btn-purple btn-sm" onclick="STJ.estado._leiId=\'' + h(leiId || '') + '\';STJ.estado.importStep=1;STJ.estado.importParsed=null;STJ.admin.nav(\'import\')">📥 Importar em Lote</button>' +
     '<button class="btn btn-red btn-sm" onclick="STJ.estado._leiId=\'' + h(leiId || '') + '\';STJ.admin.nav(\'artigo-new\')"' + (!leiId ? ' disabled' : '') + '>+ Artigo Individual</button>' +
+    (arts.length ? '<button class="btn btn-danger btn-sm" onclick="STJ.admin._apagarTodosArtigos(\'' + h(leiId || '') + '\')">🗑 Apagar Todos</button>' : '') +
     '</div></div><div class="adm-body">' +
     '<div class="f-row" style="display:flex;gap:.5rem;align-items:flex-end"><div style="flex:1"><label for="sel-lei">Lei</label><select id="sel-lei" onchange="STJ.estado._leiId=this.value;STJ.render()">' + optLeis + '</select></div></div>' +
     (lei ? '<p style="font-size:12.5px;color:var(--muted);margin-bottom:.75rem">Lei: <strong style="color:var(--charcoal)">' + h(lei.titulo) + '</strong> — ' + arts.length + ' artigo(s)</p>' : '') +
     '<table class="manage-table"><thead><tr><th>Nº</th><th>Título</th><th>Estrutura</th><th>Interpretação</th><th>Ações</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+};
+
+STJ.admin._apagarTodosArtigos = async function (leiId) {
+  if (!leiId) { STJ.toast('Selecione uma lei primeiro.'); return; }
+  var arts = STJ.g('artigos-tbody') ? STJ.g('artigos-tbody').querySelectorAll('tr').length : '?';
+  if (!confirm('Tem a certeza que quer apagar TODOS os artigos desta lei? Esta ação é irreversível (mas pode restaurar via Histórico de Versões).')) return;
+  var res = await STJ.apiAuth('eliminarTodosArtigos', { leiId: leiId });
+  STJ.toast('🗑 ' + (res && res.eliminados != null ? res.eliminados : '?') + ' artigos eliminados.');
+  STJ.render();
 };
 
 STJ.admin.artigoForm = async function (id) {
