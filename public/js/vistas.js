@@ -55,14 +55,78 @@ STJ.vistas._homeSearch = function () {
 STJ.vistas.legislacaoLista = async function () {
   var leis = await STJ.api('listarLeis');
   var h = STJ.h, sd = STJ.stBadge, fd = STJ.fmtDate;
-  var linhas = (leis || []).map(function (l) {
-    return '<div class="list-item" role="button" tabindex="0" onclick="STJ.navegar(\'lei-detalhe\',{currentLawId:\'' + h(l.id) + '\'})">' +
+
+  // Estado de UI (pesquisa/ordenação/filtro)
+  var q    = (STJ.estado._legQ   || '').toLowerCase();
+  var ord  = STJ.estado._legOrd  || 'data-desc';
+  var fArea = STJ.estado._legArea || '';
+  var fEst  = STJ.estado._legEst  || '';
+
+  // Áreas e estados únicos para os filtros
+  var areas  = [...new Set((leis || []).map(function (l) { return l.area || ''; }).filter(Boolean))].sort();
+  var estados = [...new Set((leis || []).map(function (l) { return l.estado || ''; }).filter(Boolean))].sort();
+
+  // Filtrar
+  var filtradas = (leis || []).filter(function (l) {
+    if (fArea && (l.area || '') !== fArea) return false;
+    if (fEst  && (l.estado || '') !== fEst)  return false;
+    if (q) {
+      var hay = [l.titulo, l.numero, l.autor, l.area, l.ementa].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Ordenar
+  filtradas = filtradas.slice().sort(function (a, b) {
+    switch (ord) {
+      case 'titulo-asc':  return (a.titulo || '').localeCompare(b.titulo || '', 'pt');
+      case 'titulo-desc': return (b.titulo || '').localeCompare(a.titulo || '', 'pt');
+      case 'data-asc':    return (a.dataPublicacao || '') > (b.dataPublicacao || '') ? 1 : -1;
+      case 'data-desc':   return (a.dataPublicacao || '') < (b.dataPublicacao || '') ? 1 : -1;
+      case 'numero-asc':  return (a.numero || '').localeCompare(b.numero || '', 'pt');
+      default: return 0;
+    }
+  });
+
+  var optArea  = '<option value="">Todas as áreas</option>'  + areas.map(function (a) { return '<option value="' + h(a) + '"' + (fArea === a ? ' selected' : '') + '>' + h(a) + '</option>'; }).join('');
+  var optEst   = '<option value="">Todos os estados</option>' + estados.map(function (e) { return '<option value="' + h(e) + '"' + (fEst === e ? ' selected' : '') + '>' + h(e) + '</option>'; }).join('');
+  var optOrd   = [
+    ['data-desc','Mais recentes'],['data-asc','Mais antigas'],
+    ['titulo-asc','Título A→Z'],['titulo-desc','Título Z→A'],
+    ['numero-asc','Número']
+  ].map(function (o) { return '<option value="' + o[0] + '"' + (ord === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
+
+  var linhas = filtradas.map(function (l) {
+    return '<div class="list-item" role="button" tabindex="0" onclick="STJ.navegar(\'lei-detalhe\',{currentLawId:\'' + h(l.id) + '\'})" onkeydown="if(event.key===\'Enter\')STJ.navegar(\'lei-detalhe\',{currentLawId:\'' + h(l.id) + '\'})">' +
       '<span class="badge b-red" style="flex-shrink:0;margin-top:2px">' + h(l.area || 'Lei') + '</span>' +
       '<div class="list-item-body"><div class="list-item-title">' + h(l.titulo) + '</div>' +
       '<div class="list-item-meta">' + h(l.numero) + ' · ' + fd(l.dataPublicacao) + ' · ' + h(l.autor || '—') + ' · ' + sd(l.estado) + '</div></div>' +
       '<span class="list-arrow" aria-hidden="true">›</span></div>';
-  }).join('') || '<div class="empty-state"><p>Nenhuma lei publicada.</p></div>';
-  return '<div class="section-title">Legislação</div><div class="panel">' + linhas + '</div>';
+  }).join('') || '<div class="empty-state"><p>Nenhuma lei encontrada' + (q || fArea || fEst ? ' para os filtros aplicados' : '') + '.</p></div>';
+
+  return '<div class="section-title">Legislação <span style="font-size:13px;font-weight:400;color:var(--muted)">(' + filtradas.length + ' de ' + (leis || []).length + ')</span></div>' +
+    '<div style="background:var(--white);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">' +
+    '<div style="flex:1;min-width:180px"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Pesquisar</label>' +
+    '<div class="search-form" style="margin:0"><input type="search" id="leg-q" value="' + h(STJ.estado._legQ || '') + '" placeholder="Título, número, autor…" onkeydown="if(event.key===\'Enter\')STJ.vistas._legFiltrar()" oninput="STJ.vistas._legFiltrar()" aria-label="Pesquisar legislação"><button onclick="STJ.vistas._legFiltrar()" aria-label="Pesquisar">›</button></div></div>' +
+    '<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Área jurídica</label><select id="leg-area" onchange="STJ.vistas._legFiltrar()" style="height:38px;border:1px solid var(--border);border-radius:4px;padding:0 .5rem;font-size:13px">' + optArea + '</select></div>' +
+    '<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Estado</label><select id="leg-est" onchange="STJ.vistas._legFiltrar()" style="height:38px;border:1px solid var(--border);border-radius:4px;padding:0 .5rem;font-size:13px">' + optEst + '</select></div>' +
+    '<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Ordenar por</label><select id="leg-ord" onchange="STJ.vistas._legFiltrar()" style="height:38px;border:1px solid var(--border);border-radius:4px;padding:0 .5rem;font-size:13px">' + optOrd + '</select></div>' +
+    (q || fArea || fEst ? '<button class="btn btn-outline btn-sm" onclick="STJ.vistas._legLimpar()" style="align-self:flex-end">✕ Limpar</button>' : '') +
+    '</div>' +
+    '<div class="panel">' + linhas + '</div>';
+};
+
+STJ.vistas._legFiltrar = function () {
+  STJ.estado._legQ    = (document.getElementById('leg-q')    || {}).value || '';
+  STJ.estado._legArea = (document.getElementById('leg-area') || {}).value || '';
+  STJ.estado._legEst  = (document.getElementById('leg-est')  || {}).value || '';
+  STJ.estado._legOrd  = (document.getElementById('leg-ord')  || {}).value || 'data-desc';
+  STJ.render();
+};
+STJ.vistas._legLimpar = function () {
+  STJ.estado._legQ = ''; STJ.estado._legArea = ''; STJ.estado._legEst = ''; STJ.estado._legOrd = 'data-desc';
+  STJ.render();
 };
 
 /* ── DETALHE LEI ─────────────────────────────────────────────────── */
@@ -179,14 +243,75 @@ STJ.vistas._toggleInterp = function (i) {
 STJ.vistas.jurisprudenciaLista = async function () {
   var acs = await STJ.api('listarAcordaos');
   var h = STJ.h, sd = STJ.stBadge, fd = STJ.fmtDate;
-  var linhas = (acs || []).map(function (a) {
-    return '<div class="list-item" role="button" tabindex="0" onclick="STJ.navegar(\'acordao-detalhe\',{currentAcId:\'' + h(a.id) + '\'})">' +
-      '<span class="badge b-gray" style="flex-shrink:0;margin-top:2px">STJ</span>' +
+
+  var q     = (STJ.estado._jurQ    || '').toLowerCase();
+  var ord   = STJ.estado._jurOrd   || 'data-desc';
+  var fTipo = STJ.estado._jurTipo  || '';
+  var fEst  = STJ.estado._jurEst   || '';
+
+  var tipos   = [...new Set((acs || []).map(function (a) { return a.tipo || ''; }).filter(Boolean))].sort();
+  var estados = [...new Set((acs || []).map(function (a) { return a.estado || ''; }).filter(Boolean))].sort();
+
+  var filtrados = (acs || []).filter(function (a) {
+    if (fTipo && (a.tipo || '') !== fTipo) return false;
+    if (fEst  && (a.estado || '') !== fEst)  return false;
+    if (q) {
+      var hay = [a.titulo, a.numero, a.relator, a.tipo, a.sumario].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  filtrados = filtrados.slice().sort(function (a, b) {
+    switch (ord) {
+      case 'titulo-asc':  return (a.titulo || '').localeCompare(b.titulo || '', 'pt');
+      case 'titulo-desc': return (b.titulo || '').localeCompare(a.titulo || '', 'pt');
+      case 'data-asc':    return (a.data || '') > (b.data || '') ? 1 : -1;
+      case 'data-desc':   return (a.data || '') < (b.data || '') ? 1 : -1;
+      case 'numero-asc':  return (a.numero || '').localeCompare(b.numero || '', 'pt');
+      case 'relator-asc': return (a.relator || '').localeCompare(b.relator || '', 'pt');
+      default: return 0;
+    }
+  });
+
+  var optTipo = '<option value="">Todos os tipos</option>'  + tipos.map(function (t) { return '<option value="' + h(t) + '"' + (fTipo === t ? ' selected' : '') + '>' + h(t) + '</option>'; }).join('');
+  var optEst  = '<option value="">Todos os estados</option>' + estados.map(function (e) { return '<option value="' + h(e) + '"' + (fEst === e ? ' selected' : '') + '>' + h(e) + '</option>'; }).join('');
+  var optOrd  = [
+    ['data-desc','Mais recentes'],['data-asc','Mais antigos'],
+    ['titulo-asc','Título A→Z'],['titulo-desc','Título Z→A'],
+    ['numero-asc','Número'],['relator-asc','Relator A→Z']
+  ].map(function (o) { return '<option value="' + o[0] + '"' + (ord === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
+
+  var linhas = filtrados.map(function (a) {
+    return '<div class="list-item" role="button" tabindex="0" onclick="STJ.navegar(\'acordao-detalhe\',{currentAcId:\'' + h(a.id) + '\'})" onkeydown="if(event.key===\'Enter\')STJ.navegar(\'acordao-detalhe\',{currentAcId:\'' + h(a.id) + '\'})">' +
+      '<span class="badge b-gray" style="flex-shrink:0;margin-top:2px">' + h(a.tipo || 'STJ') + '</span>' +
       '<div class="list-item-body"><div class="list-item-title">' + h(a.titulo) + '</div>' +
       '<div class="list-item-meta">' + h(a.numero) + ' · ' + fd(a.data) + ' · ' + h(a.relator || '—') + ' · ' + sd(a.estado) + '</div></div>' +
       '<span class="list-arrow" aria-hidden="true">›</span></div>';
-  }).join('') || '<div class="empty-state"><p>Nenhum acórdão publicado.</p></div>';
-  return '<div class="section-title">Jurisprudência</div><div class="panel">' + linhas + '</div>';
+  }).join('') || '<div class="empty-state"><p>Nenhum acórdão encontrado' + (q || fTipo || fEst ? ' para os filtros aplicados' : '') + '.</p></div>';
+
+  return '<div class="section-title">Jurisprudência <span style="font-size:13px;font-weight:400;color:var(--muted)">(' + filtrados.length + ' de ' + (acs || []).length + ')</span></div>' +
+    '<div style="background:var(--white);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">' +
+    '<div style="flex:1;min-width:180px"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Pesquisar</label>' +
+    '<div class="search-form" style="margin:0"><input type="search" id="jur-q" value="' + h(STJ.estado._jurQ || '') + '" placeholder="Título, número, relator…" onkeydown="if(event.key===\'Enter\')STJ.vistas._jurFiltrar()" oninput="STJ.vistas._jurFiltrar()" aria-label="Pesquisar jurisprudência"><button onclick="STJ.vistas._jurFiltrar()" aria-label="Pesquisar">›</button></div></div>' +
+    '<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Tipo de processo</label><select id="jur-tipo" onchange="STJ.vistas._jurFiltrar()" style="height:38px;border:1px solid var(--border);border-radius:4px;padding:0 .5rem;font-size:13px">' + optTipo + '</select></div>' +
+    '<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Estado</label><select id="jur-est" onchange="STJ.vistas._jurFiltrar()" style="height:38px;border:1px solid var(--border);border-radius:4px;padding:0 .5rem;font-size:13px">' + optEst + '</select></div>' +
+    '<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Ordenar por</label><select id="jur-ord" onchange="STJ.vistas._jurFiltrar()" style="height:38px;border:1px solid var(--border);border-radius:4px;padding:0 .5rem;font-size:13px">' + optOrd + '</select></div>' +
+    (q || fTipo || fEst ? '<button class="btn btn-outline btn-sm" onclick="STJ.vistas._jurLimpar()" style="align-self:flex-end">✕ Limpar</button>' : '') +
+    '</div>' +
+    '<div class="panel">' + linhas + '</div>';
+};
+
+STJ.vistas._jurFiltrar = function () {
+  STJ.estado._jurQ    = (document.getElementById('jur-q')    || {}).value || '';
+  STJ.estado._jurTipo = (document.getElementById('jur-tipo') || {}).value || '';
+  STJ.estado._jurEst  = (document.getElementById('jur-est')  || {}).value || '';
+  STJ.estado._jurOrd  = (document.getElementById('jur-ord')  || {}).value || 'data-desc';
+  STJ.render();
+};
+STJ.vistas._jurLimpar = function () {
+  STJ.estado._jurQ = ''; STJ.estado._jurTipo = ''; STJ.estado._jurEst = ''; STJ.estado._jurOrd = 'data-desc';
+  STJ.render();
 };
 
 /* ── DETALHE ACÓRDÃO ─────────────────────────────────────────────── */
