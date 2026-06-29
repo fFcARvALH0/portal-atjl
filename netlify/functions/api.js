@@ -51,11 +51,40 @@ const pdfExport = require('./lib/pdfExport');
 const { sanitizarObjeto } = require('./lib/security');
 const { garantirSetupInicial } = require('./lib/seed');
 
-/* ── Rate limiting básico por IP (SEC-03) ──────────────────────────
-   Em memória do processo. Ver nota acima sobre as limitações. */
-const _rateLimitMap = new Map();
+/* ── Rate limiting distribuído por IP (SEC-03) ─────────────────────
+   Usa Netlify Blobs como store PARTILHADO entre todas as instâncias,
+   eliminando o problema anterior em que cada instância mantinha o seu
+   próprio contador independente.
+
+   Estratégia "write-through com cache local de 3 s":
+   • Cada IP tem a sua própria chave no store "ratelimit" (evita ler a
+     lista completa a cada pedido).
+   • O contador blob é lido no máximo uma vez a cada MEM_TTL_MS por IP
+     (cache em memória de curtíssima duração), reduzindo a latência.
+   • O write-back ao blob acontece em cada pedido (fire-and-forget),
+     garantindo que o estado partilhado converge rapidamente.
+   • Se o blob store falhar (ex: cold-start sem contexto), a lógica
+     cai silenciosamente para o controlo em memória do processo. */
+const { getStore } = require('@netlify/blobs');
+
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX_PEDIDOS = 120; // por IP, por minuto, por instância
+const RATE_LIMIT_MAX_PEDIDOS = 120; // por IP, por minuto, globalmente
+const MEM_TTL_MS = 3 * 1000;       // TTL da cache local (3 s)
+
+/** Cache em memória de curtíssima duração — reduz leituras ao blob store. */
+const _rlMemCache = new Map();
+
+function _rlStore() {
+  const siteID = process.env.NETLIFY_SITE_ID;
+  const token  = process.env.NETLIFY_BLOBS_TOKEN;
+  if (siteID && token) return getStore({ name: 'ratelimit', siteID, token });
+  return getStore('ratelimit');
+}
+
+/** Normaliza o IP para usar como chave de blob (sem caracteres inválidos). */
+function _rlChave(ip) {
+  return 'rl:' + ip.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
 
 function _obterIp(event) {
   const h = event.headers || {};
@@ -63,19 +92,45 @@ function _obterIp(event) {
     (h['x-forwarded-for'] ? h['x-forwarded-for'].split(',')[0].trim() : null) || 'desconhecido';
 }
 
-function _limiteExcedido(ip) {
-  const agora = Date.now();
-  // Purga oportunista para não deixar o Map crescer indefinidamente.
-  if (_rateLimitMap.size > 5000) {
-    _rateLimitMap.forEach((v, k) => { if (agora > v.resetEm) _rateLimitMap.delete(k); });
-  }
-  const registo = _rateLimitMap.get(ip);
-  if (!registo || agora > registo.resetEm) {
-    _rateLimitMap.set(ip, { contagem: 1, resetEm: agora + RATE_LIMIT_WINDOW_MS });
+async function _limiteExcedido(ip) {
+  const agora   = Date.now();
+  const chave   = _rlChave(ip);
+
+  // 1. Verificar cache em memória (sem I/O se ainda válida).
+  const cached = _rlMemCache.get(ip);
+  if (cached && agora < cached.expMem) {
+    cached.contagem += 1;
+    if (cached.contagem > RATE_LIMIT_MAX_PEDIDOS) return true;
+    // Write-back assíncrono ao store partilhado (sem aguardar).
+    _rlStore().setJSON(chave, { contagem: cached.contagem, resetEm: cached.resetEm }).catch(() => {});
     return false;
   }
-  registo.contagem += 1;
-  return registo.contagem > RATE_LIMIT_MAX_PEDIDOS;
+
+  // 2. Cache expirada ou inexistente — ler do store partilhado.
+  try {
+    const store = _rlStore();
+    const raw   = await store.get(chave, { type: 'json' });
+    const base  = (raw && agora <= raw.resetEm) ? raw : { contagem: 0, resetEm: agora + RATE_LIMIT_WINDOW_MS };
+    base.contagem += 1;
+
+    // Atualizar cache em memória.
+    _rlMemCache.set(ip, { contagem: base.contagem, resetEm: base.resetEm, expMem: agora + MEM_TTL_MS });
+    // Purga oportunista da cache local (evitar crescimento sem fim).
+    if (_rlMemCache.size > 2000) {
+      _rlMemCache.forEach((v, k) => { if (agora > v.expMem) _rlMemCache.delete(k); });
+    }
+    // Write-back ao store partilhado (fire-and-forget).
+    store.setJSON(chave, { contagem: base.contagem, resetEm: base.resetEm }).catch(() => {});
+
+    return base.contagem > RATE_LIMIT_MAX_PEDIDOS;
+  } catch {
+    // Blob store indisponível — fallback em memória (melhor que nada).
+    const fb = _rlMemCache.get(ip) || { contagem: 0, resetEm: agora + RATE_LIMIT_WINDOW_MS, expMem: 0 };
+    fb.contagem += 1;
+    fb.expMem = agora + MEM_TTL_MS;
+    _rlMemCache.set(ip, fb);
+    return fb.contagem > RATE_LIMIT_MAX_PEDIDOS;
+  }
 }
 
 /* ── Lookup seguro de ações (SEC-06) ───────────────────────────────── */
@@ -226,9 +281,9 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: headersCORS, body: JSON.stringify({ ok: false, erro: 'Método não permitido.' }) };
   }
 
-  // SEC-03: rate limiting básico por IP (ver nota no topo do ficheiro).
+  // SEC-03: rate limiting distribuído por IP (ver nota no topo do ficheiro).
   const ip = _obterIp(event);
-  if (_limiteExcedido(ip)) {
+  if (await _limiteExcedido(ip)) {
     return { statusCode: 429, headers: headersCORS, body: JSON.stringify({ ok: false, erro: 'Demasiados pedidos. Tente novamente dentro de um minuto.' }) };
   }
 
