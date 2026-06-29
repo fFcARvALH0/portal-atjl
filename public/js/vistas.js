@@ -435,7 +435,12 @@ STJ.vistas._carregarPesquisaGuardada = function (indice) {
 };
 
 STJ.vistas._guardarPesquisa = async function () {
-  var nome = prompt('Nome para guardar esta pesquisa:');
+  var nome = await STJ.modalInput({
+    titulo: 'Guardar pesquisa',
+    label: 'Nome para guardar esta pesquisa',
+    placeholder: 'ex.: Arrendamento urbano — leis em vigor',
+    textoConfirmar: 'Guardar'
+  });
   if (!nome) return;
   await STJ.apiAuth('guardarPesquisa', { nome: nome, query: STJ.estado.searchQuery, filtros: STJ.estado.searchFilters });
   STJ.toast('Pesquisa guardada.');
