@@ -29,7 +29,15 @@ async function listarVersoes(token, csrf, tipo, entidadeId) {
   const lista = await db.listarTudo(STORES.VERSOES);
   return lista
     .filter((v) => v.tipo === tipo && v.entidadeId === entidadeId)
-    .map((v) => ({ id: v.id, timestamp: v.timestamp, utilizador: v.utilizador, snapshot: JSON.parse(v.snapshotJSON) }))
+    .map((v) => {
+      let snapshot;
+      try {
+        snapshot = JSON.parse(v.snapshotJSON);
+      } catch {
+        snapshot = null; // snapshotJSON corrompido — devolver null em vez de crashar
+      }
+      return { id: v.id, timestamp: v.timestamp, utilizador: v.utilizador, snapshot };
+    })
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
@@ -38,7 +46,12 @@ async function restaurarVersao(token, csrf, tipo, versaoId, atualizarLei, atuali
   const versoes = await db.listarTudo(STORES.VERSOES);
   const v = versoes.find((x) => x.id === versaoId);
   if (!v) throw new Error('Versão não encontrada.');
-  const snap = JSON.parse(v.snapshotJSON);
+  let snap;
+  try {
+    snap = JSON.parse(v.snapshotJSON);
+  } catch {
+    throw new Error('Snapshot da versão está corrompido e não pode ser restaurado.');
+  }
 
   if (tipo === 'Lei') return atualizarLei(snap.id, snap, sessao.username);
   if (tipo === 'Artigo') return atualizarArtigo(snap.id, snap, sessao.username);
