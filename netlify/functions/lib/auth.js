@@ -291,7 +291,7 @@ async function alterarRoleUtilizador(token, csrf, username, novoRole, ativo) {
 function gerarPasswordTemporaria() {
   const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
   let pw = '';
-  for (let i = 0; i < 14; i++) pw += alfabeto.charAt(Math.floor(Math.random() * alfabeto.length));
+  for (let i = 0; i < 14; i++) pw += alfabeto.charAt(crypto.randomInt(alfabeto.length));
   return pw;
 }
 
