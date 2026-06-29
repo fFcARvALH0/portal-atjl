@@ -421,6 +421,7 @@ STJ.vistas.pesquisa = async function () {
 STJ.vistas._pesquisar = function () {
   STJ.estado.searchQuery = STJ.g('sq');
   STJ.estado.searchFilters.tipo = STJ.gv('ft') || 'todos';
+  STJ.atualizarUrl();
   STJ.render();
 };
 
@@ -429,6 +430,7 @@ STJ.vistas._carregarPesquisaGuardada = function (indice) {
   if (!p) { STJ.toast('Pesquisa guardada não encontrada.'); return; }
   STJ.estado.searchQuery = p.query;
   STJ.estado.searchFilters = p.filtros || { tipo: 'todos' };
+  STJ.atualizarUrl();
   STJ.render();
 };
 
