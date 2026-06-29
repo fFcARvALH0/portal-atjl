@@ -12,9 +12,23 @@
  */
 window.STJ = window.STJ || {};
 
+/* ── Sessão em memória (SEGURANÇA) ───────────────────────────────────
+   O token e o CSRF são guardados APENAS nesta variável em memória.
+   sessionStorage (e localStorage) são acessíveis via JavaScript por
+   qualquer script na página — incluindo código injetado por XSS — o
+   que permitiria roubar o token e fazer chamadas autenticadas.
+   Ao usar uma variável de módulo em vez de storage persistente:
+     • o token nunca é serializável/acessível fora deste módulo;
+     • um atacante com XSS não consegue extraí-lo para um servidor externo;
+     • a sessão termina ao fechar/recarregar o separador (comportamento
+       correto para um painel de administração com dados sensíveis).
+   Tradeoff aceite: o utilizador tem de re-autenticar após cada refresh. */
+STJ._sessaoMemoria = null;
+
 STJ.estado = {
   vista: 'home',
-  sessao: JSON.parse(sessionStorage.getItem('atjl_sessao') || 'null'),
+  get sessao() { return STJ._sessaoMemoria; },
+  set sessao(v) { STJ._sessaoMemoria = v; },
   adminTab: 'leis-list',
   currentLawId: null, currentAcId: null, openInterpArt: null,
   searchQuery: '', searchFilters: { tipo: 'todos' },
