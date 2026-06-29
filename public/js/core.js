@@ -220,3 +220,74 @@ STJ.exportarPdf = async function (tipo, id) {
 
 STJ.vistas = {};
 STJ.admin = {};
+
+/* ── Modal de input estilizado (substitui window.prompt) ──────────────
+   Uso: var valor = await STJ.modalInput({ titulo, label, placeholder, textoConfirmar })
+   Devolve a string introduzida ou null se cancelado/vazio. */
+STJ.modalInput = function (opcoes) {
+  return new Promise(function (resolve) {
+    var h = STJ.h;
+    var overlay = document.createElement('div');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;padding:1rem';
+
+    var fechar = function (valor) {
+      if (document.body.contains(overlay)) document.body.removeChild(overlay);
+      resolve(valor != null && valor !== '' ? valor : null);
+    };
+
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:6px;padding:1.5rem;width:100%;max-width:440px;box-shadow:0 6px 32px rgba(0,0,0,.22)">' +
+      '<div style="font-size:15px;font-weight:700;color:var(--charcoal,#1a1a1a);margin-bottom:1rem">' + h(opcoes.titulo || 'Informação') + '</div>' +
+      '<label for="stj-modal-inp" style="font-size:12px;font-weight:600;color:var(--muted,#888);display:block;margin-bottom:6px">' + h(opcoes.label || '') + '</label>' +
+      '<input id="stj-modal-inp" type="text" placeholder="' + h(opcoes.placeholder || '') + '" autocomplete="off" ' +
+      'style="width:100%;box-sizing:border-box;padding:.55rem .65rem;font-size:13px;border:1px solid var(--border,#ddd);border-radius:4px;outline:none;margin-bottom:1rem">' +
+      '<div style="display:flex;gap:.5rem;justify-content:flex-end">' +
+      '<button id="stj-modal-cancel" class="btn btn-outline btn-sm">Cancelar</button>' +
+      '<button id="stj-modal-ok" class="btn btn-red btn-sm">' + h(opcoes.textoConfirmar || 'OK') + '</button>' +
+      '</div></div>';
+
+    document.body.appendChild(overlay);
+
+    var inp = document.getElementById('stj-modal-inp');
+    var confirmar = function () { fechar(inp ? String(inp.value || '').trim() : null); };
+
+    document.getElementById('stj-modal-ok').addEventListener('click', confirmar);
+    document.getElementById('stj-modal-cancel').addEventListener('click', function () { fechar(null); });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) fechar(null); });
+    if (inp) {
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') confirmar();
+        if (e.key === 'Escape') fechar(null);
+      });
+      setTimeout(function () { inp.focus(); }, 40);
+    }
+  });
+};
+
+/* ── Modal informativo (substitui alert/confirm) ─────────────────────
+   Uso: await STJ.modalInfo({ titulo, mensagem, textoBotao })          */
+STJ.modalInfo = function (opcoes) {
+  return new Promise(function (resolve) {
+    var h = STJ.h;
+    var overlay = document.createElement('div');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;padding:1rem';
+
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:6px;padding:1.5rem;width:100%;max-width:460px;box-shadow:0 6px 32px rgba(0,0,0,.22)">' +
+      '<div style="font-size:15px;font-weight:700;color:var(--charcoal,#1a1a1a);margin-bottom:.75rem">' + h(opcoes.titulo || 'Informação') + '</div>' +
+      '<div style="font-size:13px;color:var(--dark,#333);line-height:1.7;white-space:pre-wrap;margin-bottom:1.25rem">' + h(opcoes.mensagem || '') + '</div>' +
+      '<div style="display:flex;justify-content:flex-end">' +
+      '<button id="stj-info-ok" class="btn btn-red btn-sm">' + h(opcoes.textoBotao || 'OK') + '</button>' +
+      '</div></div>';
+
+    document.body.appendChild(overlay);
+    var fechar = function () { if (document.body.contains(overlay)) document.body.removeChild(overlay); resolve(); };
+    document.getElementById('stj-info-ok').addEventListener('click', fechar);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) fechar(); });
+    setTimeout(function () { var b = document.getElementById('stj-info-ok'); if (b) b.focus(); }, 40);
+  });
+};
