@@ -373,7 +373,7 @@ STJ.admin.artigosList = async function () {
     '</div></div><div class="adm-body">' +
     '<div class="f-row" style="display:flex;gap:.5rem;align-items:flex-end"><div style="flex:1"><label for="sel-lei">Lei</label><select id="sel-lei" onchange="STJ.estado._leiId=this.value;STJ.render()">' + optLeis + '</select></div></div>' +
     (lei ? '<p style="font-size:12.5px;color:var(--muted);margin-bottom:.75rem">Lei: <strong style="color:var(--charcoal)">' + h(lei.titulo) + '</strong> — ' + arts.length + ' artigo(s)</p>' : '') +
-    '<table class="manage-table"><thead><tr><th>Nº</th><th>Título</th><th>Estrutura</th><th>Interpretação</th><th>Ações</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    '<div style="overflow-x:auto"><table class="manage-table"><thead><tr><th>Nº</th><th>Título</th><th>Estrutura</th><th>Interpretação</th><th>Ações</th></tr></thead><tbody>' + rows + '</tbody></table></div></div></div>';
 };
 
 STJ.admin._apagarTodosArtigos = async function (leiId) {
@@ -603,7 +603,7 @@ STJ.admin.favoritos = async function () {
       '<button class="btn btn-danger btn-sm" onclick="STJ.admin._removerFav(\'' + h(f.tipo) + '\',\'' + h(f.entidadeId) + '\')">Remover</button></div></td></tr>';
   }).join('') || '<tr><td colspan="3"><div class="empty-state"><p>Nenhum favorito guardado.</p></div></td></tr>';
   return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">Meus Favoritos</span></div>' +
-    '<table class="manage-table"><thead><tr><th>Tipo</th><th>Guardado em</th><th>Ações</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    '<div style="overflow-x:auto"><table class="manage-table"><thead><tr><th>Tipo</th><th>Guardado em</th><th>Ações</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 };
 
 STJ.admin._removerFav = async function (tipo, entidadeId) {
