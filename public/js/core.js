@@ -221,6 +221,152 @@ STJ.exportarPdf = async function (tipo, id) {
 STJ.vistas = {};
 STJ.admin = {};
 
+/* ── Diff de texto (word-level, LCS) ──────────────────────────────────
+   Algoritmo simples de maior subsequência comum sobre tokens
+   (palavras + espaços/pontuação preservados), usado para gerar a
+   comparação visual lado-a-lado entre versões de uma entidade. Não
+   depende de bibliotecas externas — mantém o CSP do projeto intacto. */
+STJ._diffTokenizar = function (s) {
+  return String(s == null ? '' : s).match(/\s+|[^\s]+/g) || [];
+};
+
+/** Devolve um array de {tipo: 'igual'|'add'|'rem', valor} a partir de duas strings. */
+STJ.diffPalavras = function (antigo, novo) {
+  var a = STJ._diffTokenizar(antigo);
+  var b = STJ._diffTokenizar(novo);
+  var n = a.length, m = b.length;
+  // Tabela de LCS (limitada — textos de artigos são curtos o suficiente).
+  var dp = new Array(n + 1);
+  for (var i = 0; i <= n; i++) dp[i] = new Array(m + 1).fill(0);
+  for (i = n - 1; i >= 0; i--) {
+    for (var j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  var resultado = [];
+  i = 0; j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { resultado.push({ tipo: 'igual', valor: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { resultado.push({ tipo: 'rem', valor: a[i] }); i++; }
+    else { resultado.push({ tipo: 'add', valor: b[j] }); j++; }
+  }
+  while (i < n) { resultado.push({ tipo: 'rem', valor: a[i] }); i++; }
+  while (j < m) { resultado.push({ tipo: 'add', valor: b[j] }); j++; }
+  return resultado;
+};
+
+/** Marca apenas as remoções (para a coluna "antes") ou adições (coluna "depois"). */
+STJ._diffColuna = function (partes, ladoAntigo) {
+  var h = STJ.h;
+  return partes.filter(function (p) { return p.tipo === 'igual' || (ladoAntigo ? p.tipo === 'rem' : p.tipo === 'add'); })
+    .map(function (p) {
+      if (p.tipo === 'igual') return h(p.valor);
+      var cls = p.tipo === 'rem' ? 'diff-rem' : 'diff-add';
+      return '<mark class="' + cls + '">' + h(p.valor) + '</mark>';
+    }).join('');
+};
+
+/** Constrói o HTML de comparação lado-a-lado para um conjunto de campos de duas versões. */
+STJ.renderDiffCampos = function (campos, snapAntigo, snapNovo) {
+  var h = STJ.h;
+  return campos.map(function (c) {
+    var valAntigo = (snapAntigo && snapAntigo[c.chave]) || '';
+    var valNovo = (snapNovo && snapNovo[c.chave]) || '';
+    if (valAntigo === valNovo) {
+      return '<div class="diff-campo"><div class="diff-campo-label">' + h(c.label) + '</div>' +
+        '<div class="diff-igual">' + (h(valNovo) || '<em>(vazio)</em>') + '</div></div>';
+    }
+    var partes = STJ.diffPalavras(valAntigo, valNovo);
+    return '<div class="diff-campo"><div class="diff-campo-label">' + h(c.label) + '</div>' +
+      '<div class="diff-grid"><div class="diff-col diff-col-old"><div class="diff-col-hd">Antes</div><div class="diff-col-body">' + (STJ._diffColuna(partes, true) || '<em>(vazio)</em>') + '</div></div>' +
+      '<div class="diff-col diff-col-new"><div class="diff-col-hd">Depois</div><div class="diff-col-body">' + (STJ._diffColuna(partes, false) || '<em>(vazio)</em>') + '</div></div></div></div>';
+  }).join('');
+};
+
+/* ── Painel de Histórico de Versões (com diff visual) ─────────────────
+   Uso: STJ.abrirHistoricoVersoes({ tipo: 'Artigo', id, campos, onRestaurado })
+   campos: [{chave: 'texto', label: 'Texto do Artigo'}, ...] — define
+   que campos do snapshot entram na comparação. */
+STJ.abrirHistoricoVersoes = async function (opcoes) {
+  var h = STJ.h;
+  var tipo = opcoes.tipo, id = opcoes.id, campos = opcoes.campos || [];
+  var overlay = document.createElement('div');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.className = 'stj-hist-overlay';
+  overlay.innerHTML = '<div class="stj-hist-box"><div class="stj-hist-hd"><span>📜 Histórico de Versões</span><button class="btn btn-outline btn-sm" id="stj-hist-fechar">Fechar</button></div><div class="stj-hist-body"><div class="spinner-line">A carregar histórico…</div></div></div>';
+  document.body.appendChild(overlay);
+
+  var fechar = function () { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
+  document.getElementById('stj-hist-fechar').addEventListener('click', fechar);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) fechar(); });
+
+  var body = overlay.querySelector('.stj-hist-body');
+
+  var versoes;
+  try {
+    versoes = await STJ.apiAuth('listarVersoes', { tipo: tipo, id: id });
+  } catch (e) {
+    body.innerHTML = '<div class="empty-state"><p>Não foi possível carregar o histórico.</p></div>';
+    return;
+  }
+
+  if (!versoes || !versoes.length) {
+    body.innerHTML = '<div class="empty-state"><p>Sem versões anteriores registadas para esta entidade.</p></div>';
+    return;
+  }
+
+  // Estado local: índices das duas versões a comparar (0 = mais recente).
+  var selAntigo = versoes.length > 1 ? 1 : 0;
+  var selNovo = 0;
+
+  var optsVersao = function (selecionado) {
+    return versoes.map(function (v, idx) {
+      return '<option value="' + idx + '"' + (idx === selecionado ? ' selected' : '') + '>' +
+        STJ.fmtDate(v.timestamp) + ' — ' + h(v.utilizador) + '</option>';
+    }).join('');
+  };
+
+  var redesenhar = function () {
+    var vAntigo = versoes[selAntigo], vNovo = versoes[selNovo];
+    var snapAntigo = vAntigo ? vAntigo.snapshot : null;
+    var snapNovo = vNovo ? vNovo.snapshot : null;
+    var sessao = STJ.estado.sessao;
+    var podeRestaurar = !!(sessao && sessao.utilizador && sessao.utilizador.role === 'administrador');
+
+    body.innerHTML =
+      '<div class="diff-toolbar">' +
+      '<div class="diff-sel"><label>Comparar (de)</label><select id="stj-hist-de">' + optsVersao(selAntigo) + '</select></div>' +
+      '<div class="diff-sel"><label>Com (para)</label><select id="stj-hist-para">' + optsVersao(selNovo) + '</select></div>' +
+      (podeRestaurar ? '<button class="btn btn-red btn-sm" id="stj-hist-restaurar" ' + (vAntigo ? '' : 'disabled') + '>↩ Restaurar versão "De"</button>' : '') +
+      '</div>' +
+      (snapAntigo && snapNovo ? STJ.renderDiffCampos(campos, snapAntigo, snapNovo) : '<div class="empty-state"><p>Snapshot indisponível ou corrompido para uma das versões selecionadas.</p></div>') +
+      '<div class="diff-legenda"><span><mark class="diff-rem">texto</mark> removido</span><span><mark class="diff-add">texto</mark> adicionado</span></div>';
+
+    document.getElementById('stj-hist-de').addEventListener('change', function (e) { selAntigo = Number(e.target.value); redesenhar(); });
+    document.getElementById('stj-hist-para').addEventListener('change', function (e) { selNovo = Number(e.target.value); redesenhar(); });
+    var btnRestaurar = document.getElementById('stj-hist-restaurar');
+    if (btnRestaurar) {
+      btnRestaurar.addEventListener('click', async function () {
+        if (!vAntigo) return;
+        if (!await STJ.modalConfirm({
+          titulo: 'Restaurar Versão',
+          mensagem: 'Tem a certeza que quer restaurar a versão de ' + STJ.fmtDate(vAntigo.timestamp) + '? O estado atual será substituído (mas fica também registado no histórico).',
+          textoConfirmar: 'Restaurar'
+        })) return;
+        try {
+          await STJ.apiAuth('restaurarVersao', { tipo: tipo, versaoId: vAntigo.id });
+          STJ.toast('Versão restaurada.');
+          fechar();
+          STJ.render();
+        } catch (e) { /* erro já mostrado em toast por STJ.api */ }
+      });
+    }
+  };
+
+  redesenhar();
+};
+
 /* ── Modal de confirmação estilizado (substitui window.confirm) ──────
    Uso: if (await STJ.modalConfirm({ titulo, mensagem, textoConfirmar })) { ... }
    Devolve true se confirmado, false se cancelado. */
