@@ -61,6 +61,8 @@ STJ.vistas.legislacaoLista = async function () {
   var ord  = STJ.estado._legOrd  || 'data-desc';
   var fArea = STJ.estado._legArea || '';
   var fEst  = STJ.estado._legEst  || '';
+  // Seleção para exportação em lote — mapa {id: true}.
+  var sel = STJ.estado._legSel || (STJ.estado._legSel = {});
 
   // Áreas e estados únicos para os filtros
   var areas  = [...new Set((leis || []).map(function (l) { return l.area || ''; }).filter(Boolean))].sort();
@@ -99,11 +101,23 @@ STJ.vistas.legislacaoLista = async function () {
 
   var linhas = filtradas.map(function (l) {
     return '<div class="list-item" role="button" tabindex="0" onclick="STJ.navegar(\'lei-detalhe\',{currentLawId:\'' + h(l.id) + '\'})" onkeydown="if(event.key===\'Enter\')STJ.navegar(\'lei-detalhe\',{currentLawId:\'' + h(l.id) + '\'})">' +
+      '<label class="list-item-check" onclick="event.stopPropagation()"><input type="checkbox" aria-label="Selecionar ' + h(l.numero) + ' para exportação"' + (sel[l.id] ? ' checked' : '') + ' onchange="STJ.vistas._legToggleSel(\'' + h(l.id) + '\', this.checked)"></label>' +
       '<span class="badge b-red" style="flex-shrink:0;margin-top:2px">' + h(l.area || 'Lei') + '</span>' +
       '<div class="list-item-body"><div class="list-item-title">' + h(l.titulo) + '</div>' +
       '<div class="list-item-meta">' + h(l.numero) + ' · ' + fd(l.dataPublicacao) + ' · ' + h(l.autor || '—') + ' · ' + sd(l.estado) + '</div></div>' +
       '<span class="list-arrow" aria-hidden="true">›</span></div>';
   }).join('') || '<div class="empty-state"><p>Nenhuma lei encontrada' + (q || fArea || fEst ? ' para os filtros aplicados' : '') + '.</p></div>';
+
+  var idsVisiveis = filtradas.map(function (l) { return l.id; });
+  var nSel = idsVisiveis.filter(function (id) { return sel[id]; }).length;
+  var todosVisiveisSel = idsVisiveis.length > 0 && nSel === idsVisiveis.length;
+
+  var toolbarLote = '<div class="batch-toolbar">' +
+    '<label class="batch-toolbar-all"><input type="checkbox" data-ids="' + idsVisiveis.join(',') + '"' + (todosVisiveisSel ? ' checked' : '') + ' onchange="STJ.vistas._legToggleSelTodos(this.checked, this.dataset.ids ? this.dataset.ids.split(\',\') : [])" aria-label="Selecionar todas as leis visíveis"> Selecionar visíveis</label>' +
+    '<span class="batch-toolbar-count">' + (nSel ? nSel + ' selecionada(s)' : 'Nenhuma selecionada') + '</span>' +
+    '<button class="btn btn-outline btn-sm" ' + (nSel ? '' : 'disabled') + ' onclick="STJ.exportarPdfLote(\'lei\', Object.keys(STJ.estado._legSel || {}))">⬇ Exportar selecionadas (PDF)</button>' +
+    (nSel ? '<button class="btn btn-outline btn-sm" onclick="STJ.estado._legSel={};STJ.render()">✕ Limpar seleção</button>' : '') +
+    '</div>';
 
   return '<div class="section-title">Legislação <span style="font-size:13px;font-weight:400;color:var(--muted)">(' + filtradas.length + ' de ' + (leis || []).length + ')</span></div>' +
     '<div style="background:var(--white);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">' +
@@ -114,7 +128,19 @@ STJ.vistas.legislacaoLista = async function () {
     '<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Ordenar por</label><select id="leg-ord" onchange="STJ.vistas._legFiltrar()" style="height:38px;border:1px solid var(--border);border-radius:4px;padding:0 .5rem;font-size:13px">' + optOrd + '</select></div>' +
     (q || fArea || fEst ? '<button class="btn btn-outline btn-sm" onclick="STJ.vistas._legLimpar()" style="align-self:flex-end">✕ Limpar</button>' : '') +
     '</div>' +
+    toolbarLote +
     '<div class="panel">' + linhas + '</div>';
+};
+
+STJ.vistas._legToggleSel = function (id, checked) {
+  var sel = STJ.estado._legSel || (STJ.estado._legSel = {});
+  if (checked) sel[id] = true; else delete sel[id];
+  STJ.render();
+};
+STJ.vistas._legToggleSelTodos = function (checked, ids) {
+  var sel = STJ.estado._legSel || (STJ.estado._legSel = {});
+  (ids || []).forEach(function (id) { if (!id) return; if (checked) sel[id] = true; else delete sel[id]; });
+  STJ.render();
 };
 
 STJ.vistas._legFiltrar = function () {
