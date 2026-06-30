@@ -181,7 +181,11 @@ const ACOES_PUBLICAS = {
   logout: async ({ token }) => auth.terminarSessao(token),
 
   exportarLeiPdf: async ({ id }) => pdfExport.exportarLeiParaPdf(id),
-  exportarAcordaoPdf: async ({ id }) => pdfExport.exportarAcordaoParaPdf(id)
+  exportarAcordaoPdf: async ({ id }) => pdfExport.exportarAcordaoParaPdf(id),
+  // Exportação em lote (ponto 3 do roadmap): um único PDF combinado
+  // para uma seleção de leis OU de acórdãos. Mantida pública, tal
+  // como as exportações individuais — é leitura de dados já públicos.
+  exportarLotePdf: async ({ tipo, ids }) => pdfExport.exportarLoteParaPdf(tipo, ids)
 };
 
 /* ── Mapa de ações autenticadas (recebem token + csrf) ────────────── */
