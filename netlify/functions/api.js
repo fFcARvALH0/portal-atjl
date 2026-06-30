@@ -46,6 +46,7 @@ const audit = require('./lib/audit');
 const versioning = require('./lib/versioning');
 const favoritos = require('./lib/favoritos');
 const searchEngine = require('./lib/searchEngine');
+const relacoes = require('./lib/relacoes');
 const parser = require('./lib/parser');
 const pdfExport = require('./lib/pdfExport');
 const { sanitizarObjeto } = require('./lib/security');
@@ -144,7 +145,8 @@ const TTL_CACHE_SEG = {
   listarLeis: 60,
   obterLei: 60,
   listarAcordaos: 60,
-  obterAcordao: 60
+  obterAcordao: 60,
+  obterCitantesArtigo: 60
 };
 
 /* ── Mapa de ações públicas (sem autenticação) ────────────────────── */
@@ -155,6 +157,23 @@ const ACOES_PUBLICAS = {
   obterLei: async ({ id }) => ({ lei: await entities.obterLei(id), artigos: await entities.listarArtigos(id) }),
   listarAcordaos: async () => entities.listarAcordaos(),
   obterAcordao: async ({ id }) => entities.obterAcordao(id),
+  // "Quem cita este artigo" — a relação acórdão↔artigo já existia nos
+  // dados (vinculação automática em relacoes.js) mas nunca tinha sido
+  // exposta à UI pública. Devolve apenas os campos leves necessários
+  // para a listagem (não o acórdão completo) para manter o payload
+  // pequeno; listarAcordaos() já está em cache, por isso este join é
+  // barato mesmo sem cache próprio.
+  obterCitantesArtigo: async ({ artigoId }) => {
+    if (!artigoId) return [];
+    const relsDoArtigo = await relacoes.listarRelacoesDoArtigo(artigoId);
+    if (!relsDoArtigo.length) return [];
+    const idsAcordaos = new Set(relsDoArtigo.map((r) => r.acordaoId));
+    const todosAcordaos = await entities.listarAcordaos();
+    return todosAcordaos
+      .filter((a) => idsAcordaos.has(a.id))
+      .map((a) => ({ id: a.id, numero: a.numero, titulo: a.titulo, data: a.data, estado: a.estado, tipo: a.tipo }));
+  },
+
   pesquisar: async ({ query, filtros }) => searchEngine.pesquisarPortal(query, filtros),
   analisarDocumento: async ({ texto }) => parser.analisarDocumento(texto),
 
