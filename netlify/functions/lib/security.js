@@ -6,6 +6,14 @@
  * Sanitização e validação do lado do servidor — defesa em
  * profundidade, nunca confiar apenas no cliente.
  *
+ * CORREÇÃO: a sanitização de HTML/JS deixou de ser feita com uma
+ * blacklist de regex feita à mão (que era trivial de contornar com
+ * vetores como <svg onload=...> sem aspas, <img src=x onerror=...> ou
+ * tags aninhadas) e passou a usar a biblioteca sanitize-html. Por
+ * omissão removemos todas as tags e atributos, mantendo apenas o
+ * texto — para esta aplicação não há necessidade de permitir HTML
+ * rico nos campos de texto, pelo que esta é a opção mais segura.
+ *
  * NOTA SOBRE A "NEUTRALIZAÇÃO DE FÓRMULAS":
  *   Essa proteção existia porque os dados eram gravados em Google
  *   Sheets, onde um texto começado por "=" podia ser interpretado
@@ -16,14 +24,22 @@
  * ════════════════════════════════════════════════════════════════════
  */
 
+const sanitizeHtml = require('sanitize-html');
 const { LIMITES_TEXTO } = require('./config');
+
+/** Opções do sanitize-html: nenhuma tag/atributo permitido — só texto. */
+const OPCOES_SANITIZACAO = {
+  allowedTags: [],
+  allowedAttributes: {},
+  // O conteúdo de <script>, <style>, etc. é descartado por completo
+  // (comportamento por omissão do sanitize-html), não apenas a tag.
+  disallowedTagsMode: 'discard'
+};
 
 function sanitizarTexto(texto, limite) {
   if (texto === undefined || texto === null) return '';
   let t = String(texto);
-  t = t.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
-  t = t.replace(/ on\w+="[^"]*"/gi, '').replace(/ on\w+='[^']*'/gi, '');
-  t = t.replace(/javascript:/gi, '');
+  t = sanitizeHtml(t, OPCOES_SANITIZACAO);
   t = neutralizarFormula(t);
   if (limite && t.length > limite) t = t.substring(0, limite);
   return t.trim();
