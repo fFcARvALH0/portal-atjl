@@ -31,6 +31,7 @@ STJ.estado = {
   set sessao(v) { STJ._sessaoMemoria = v; },
   adminTab: 'leis-list',
   currentLawId: null, currentAcId: null, openInterpArt: null,
+  openCitArt: null, _citCache: {},
   searchQuery: '', searchFilters: { tipo: 'todos' },
   importStep: 1, importParsed: null, importLeiId: null,
   _editId: null, _leiId: null
@@ -131,7 +132,7 @@ STJ.atualizarTopbar = function () {
 
 /* ── Navegação ──────────────────────────────────────────────────── */
 STJ.navegar = async function (vista, extra) {
-  STJ.estado.vista = vista; STJ.estado.openInterpArt = null;
+  STJ.estado.vista = vista; STJ.estado.openInterpArt = null; STJ.estado.openCitArt = null;
   if (extra) Object.assign(STJ.estado, extra);
   document.querySelectorAll('.nav-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.view === vista); });
   await STJ.render();
