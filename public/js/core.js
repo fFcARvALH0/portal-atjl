@@ -221,6 +221,38 @@ STJ.exportarPdf = async function (tipo, id) {
 STJ.vistas = {};
 STJ.admin = {};
 
+/* ── Modal de confirmação estilizado (substitui window.confirm) ──────
+   Uso: if (await STJ.modalConfirm({ titulo, mensagem, textoConfirmar })) { ... }
+   Devolve true se confirmado, false se cancelado. */
+STJ.modalConfirm = function (opcoes) {
+  return new Promise(function (resolve) {
+    var h = STJ.h;
+    var overlay = document.createElement('div');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;padding:1rem';
+
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:6px;padding:1.5rem;width:100%;max-width:460px;box-shadow:0 6px 32px rgba(0,0,0,.22)">' +
+      '<div style="font-size:15px;font-weight:700;color:var(--charcoal,#1a1a1a);margin-bottom:.75rem">' + h(opcoes.titulo || 'Confirmar') + '</div>' +
+      '<div style="font-size:13px;color:var(--dark,#333);line-height:1.7;white-space:pre-wrap;margin-bottom:1.25rem">' + h(opcoes.mensagem || '') + '</div>' +
+      '<div style="display:flex;gap:.5rem;justify-content:flex-end">' +
+      '<button id="stj-conf-cancel" class="btn btn-outline btn-sm">' + h(opcoes.textoCancelar || 'Cancelar') + '</button>' +
+      '<button id="stj-conf-ok" class="btn btn-red btn-sm">' + h(opcoes.textoConfirmar || 'Confirmar') + '</button>' +
+      '</div></div>';
+
+    document.body.appendChild(overlay);
+    var fechar = function (valor) { if (document.body.contains(overlay)) document.body.removeChild(overlay); resolve(valor); };
+    document.getElementById('stj-conf-ok').addEventListener('click', function () { fechar(true); });
+    document.getElementById('stj-conf-cancel').addEventListener('click', function () { fechar(false); });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) fechar(false); });
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', escHandler); fechar(false); }
+    });
+    setTimeout(function () { var b = document.getElementById('stj-conf-cancel'); if (b) b.focus(); }, 40);
+  });
+};
+
 /* ── Modal de input estilizado (substitui window.prompt) ──────────────
    Uso: var valor = await STJ.modalInput({ titulo, label, placeholder, textoConfirmar })
    Devolve a string introduzida ou null se cancelado/vazio. */
