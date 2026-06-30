@@ -173,7 +173,7 @@ STJ.admin._saveLei = async function (id) {
 };
 
 STJ.admin._delLei = async function (id, titulo) {
-  if (!confirm('Eliminar a lei "' + titulo + '" e todos os seus artigos? Esta ação não pode ser desfeita.')) return;
+  if (!await STJ.modalConfirm({ titulo: 'Eliminar Lei', mensagem: 'Eliminar a lei "' + titulo + '" e todos os seus artigos? Esta ação não pode ser desfeita.', textoConfirmar: 'Eliminar' })) return;
   await STJ.apiAuth('eliminarLei', { id: id });
   STJ.toast('Lei eliminada.');
   STJ.admin.nav('leis-list');
@@ -379,7 +379,7 @@ STJ.admin.artigosList = async function () {
 STJ.admin._apagarTodosArtigos = async function (leiId) {
   if (!leiId) { STJ.toast('Selecione uma lei primeiro.'); return; }
   var arts = STJ.g('artigos-tbody') ? STJ.g('artigos-tbody').querySelectorAll('tr').length : '?';
-  if (!confirm('Tem a certeza que quer apagar TODOS os artigos desta lei? Esta ação é irreversível (mas pode restaurar via Histórico de Versões).')) return;
+  if (!await STJ.modalConfirm({ titulo: 'Eliminar Artigos', mensagem: 'Tem a certeza que quer apagar TODOS os artigos desta lei? Esta ação é irreversível (mas pode restaurar via Histórico de Versões).', textoConfirmar: 'Eliminar Todos' })) return;
   var res = await STJ.apiAuth('eliminarTodosArtigos', { leiId: leiId });
   STJ.toast('🗑 ' + (res && res.eliminados != null ? res.eliminados : '?') + ' artigos eliminados.');
   STJ.render();
@@ -428,7 +428,7 @@ STJ.admin._saveArtigo = async function (id) {
 };
 
 STJ.admin._delArtigo = async function (id) {
-  if (!confirm('Eliminar este artigo?')) return;
+  if (!await STJ.modalConfirm({ titulo: 'Eliminar Artigo', mensagem: 'Eliminar este artigo?', textoConfirmar: 'Eliminar' })) return;
   await STJ.apiAuth('eliminarArtigo', { id: id });
   STJ.toast('Artigo eliminado.');
   STJ.render();
@@ -511,7 +511,7 @@ STJ.admin._saveAc = async function (id) {
 };
 
 STJ.admin._delAc = async function (id, titulo) {
-  if (!confirm('Eliminar o acórdão "' + titulo + '"?')) return;
+  if (!await STJ.modalConfirm({ titulo: 'Eliminar Acórdão', mensagem: 'Eliminar o acórdão "' + titulo + '"?', textoConfirmar: 'Eliminar' })) return;
   await STJ.apiAuth('eliminarAcordao', { id: id });
   STJ.toast('Acórdão eliminado.');
   STJ.admin.nav('acs-list');
@@ -535,16 +535,35 @@ STJ.admin.utilizadores = async function () {
 };
 
 STJ.admin._novoUserPrompt = async function () {
-  var username = prompt('Nome de utilizador (login) do novo utilizador:');
+  var username = await STJ.modalInput({
+    titulo: 'Novo Utilizador',
+    label: 'Nome de utilizador (login)',
+    placeholder: 'ex.: jsilva',
+    textoConfirmar: 'Seguinte'
+  });
   if (!username) return;
-  var nome = prompt('Nome completo:');
+  var nome = await STJ.modalInput({
+    titulo: 'Novo Utilizador',
+    label: 'Nome completo',
+    placeholder: 'ex.: João Silva',
+    textoConfirmar: 'Seguinte'
+  });
   if (!nome) return;
-  var role = prompt('Papel (administrador / redator / revisor / leitor):', 'redator');
+  var role = await STJ.modalInput({
+    titulo: 'Novo Utilizador',
+    label: 'Papel (administrador / redator / revisor / leitor)',
+    placeholder: 'redator',
+    textoConfirmar: 'Criar Utilizador'
+  });
   if (!role) return;
   var res = await STJ.apiAuth('criarUtilizador', { dados: { username: username, nome: nome, role: role } });
   if (res && res.ok === false) { STJ.toast(res.erro); return; }
   if (res && res.passwordTemporaria) {
-    alert('Utilizador "' + username + '" criado.\n\nPassword temporária: ' + res.passwordTemporaria + '\n\nComunique esta password ao utilizador por um canal seguro. Será pedida a alteração no primeiro acesso.');
+    await STJ.modalInfo({
+      titulo: 'Utilizador criado',
+      mensagem: 'Utilizador "' + username + '" criado.\n\nPassword temporária: ' + res.passwordTemporaria + '\n\nComunique esta password ao utilizador por um canal seguro. Será pedida a alteração no primeiro acesso.',
+      textoBotao: 'Entendido'
+    });
   }
   STJ.toast('Utilizador criado.');
   STJ.render();
