@@ -143,7 +143,9 @@ STJ.admin.leiForm = async function (id) {
   var h = STJ.h;
   var areas = ['Cível', 'Penal', 'Administrativo', 'Constitucional', 'Laboral', 'Fiscal', 'Outros'];
   var optAreas = areas.map(function (o) { return '<option' + (lei && lei.area === o ? ' selected' : '') + '>' + o + '</option>'; }).join('');
-  return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">' + (lei ? 'Editar Lei' : 'Nova Lei') + '</span><button class="btn btn-outline btn-sm" onclick="STJ.admin.nav(\'leis-list\')">‹ Voltar</button></div>' +
+  return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">' + (lei ? 'Editar Lei' : 'Nova Lei') + '</span><div style="display:flex;gap:.5rem">' +
+    (lei ? '<button class="btn btn-outline btn-sm" onclick="STJ.admin.historicoLei(\'' + h(lei.id) + '\')">📜 Histórico de Versões</button>' : '') +
+    '<button class="btn btn-outline btn-sm" onclick="STJ.admin.nav(\'leis-list\')">‹ Voltar</button></div></div>' +
     '<div class="adm-body">' +
     '<div class="f-row"><label for="l-data">Data de Publicação</label><input type="date" id="l-data" value="' + h(lei ? lei.dataPublicacao : '') + '"></div>' +
     '<div class="f-row"><label for="l-titulo">Título Completo *</label><input type="text" id="l-titulo" value="' + h(lei ? lei.titulo : '') + '"></div>' +
@@ -177,6 +179,22 @@ STJ.admin._delLei = async function (id, titulo) {
   await STJ.apiAuth('eliminarLei', { id: id });
   STJ.toast('Lei eliminada.');
   STJ.admin.nav('leis-list');
+};
+
+/** Campos do snapshot de "Lei" relevantes para a comparação visual. */
+STJ.admin.historicoLei = function (id) {
+  STJ.abrirHistoricoVersoes({
+    tipo: 'Lei',
+    id: id,
+    campos: [
+      { chave: 'titulo', label: 'Título Completo' },
+      { chave: 'area', label: 'Área Jurídica' },
+      { chave: 'estado', label: 'Estado' },
+      { chave: 'publicacaoOficial', label: 'Publicação Oficial' },
+      { chave: 'autor', label: 'Órgão Emitente' },
+      { chave: 'ementa', label: 'Ementa' }
+    ]
+  });
 };
 
 /* ── IMPORTAÇÃO ─────────────────────────────────────────────────── */
@@ -399,7 +417,9 @@ STJ.admin.artigoForm = async function (id) {
   var leiId = (artigo && artigo.leiId) || leiIdAtual;
   var h = STJ.h;
   var optLeis = leis.map(function (l) { return '<option value="' + h(l.id) + '"' + (l.id === leiId ? ' selected' : '') + '>' + h(l.numero) + ' — ' + h(l.titulo) + '</option>'; }).join('');
-  return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">' + (artigo ? 'Editar Artigo' : 'Novo Artigo') + '</span><button class="btn btn-outline btn-sm" onclick="STJ.admin.nav(\'artigos\')">‹ Voltar</button></div>' +
+  return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">' + (artigo ? 'Editar Artigo' : 'Novo Artigo') + '</span><div style="display:flex;gap:.5rem">' +
+    (artigo ? '<button class="btn btn-outline btn-sm" onclick="STJ.admin.historicoArtigo(\'' + h(artigo.id) + '\')">📜 Histórico de Versões</button>' : '') +
+    '<button class="btn btn-outline btn-sm" onclick="STJ.admin.nav(\'artigos\')">‹ Voltar</button></div></div>' +
     '<div class="adm-body">' +
     '<div class="f-row"><label for="fa-lei">Lei *</label><select id="fa-lei">' + optLeis + '</select></div>' +
     '<div class="g2"><div class="f-row"><label for="fa-num">Número *</label><input type="text" id="fa-num" value="' + h(artigo ? artigo.numero : '') + '" placeholder="Artigo 15.º"></div>' +
@@ -432,6 +452,23 @@ STJ.admin._delArtigo = async function (id) {
   await STJ.apiAuth('eliminarArtigo', { id: id });
   STJ.toast('Artigo eliminado.');
   STJ.render();
+};
+
+/** Campos do snapshot de "Artigo" relevantes para a comparação visual. */
+STJ.admin.historicoArtigo = function (id) {
+  STJ.abrirHistoricoVersoes({
+    tipo: 'Artigo',
+    id: id,
+    campos: [
+      { chave: 'numero', label: 'Número' },
+      { chave: 'titulo', label: 'Epígrafe' },
+      { chave: 'texto', label: 'Texto do Artigo' },
+      { chave: 'interpretacaoTexto', label: 'Texto Interpretativo' },
+      { chave: 'principios', label: 'Princípios Aplicáveis' },
+      { chave: 'ratio', label: 'Ratio Decidendi' },
+      { chave: 'enquadramento', label: 'Enquadramento Sistemático' }
+    ]
+  });
 };
 
 /* ── INTERPRETAÇÕES ─────────────────────────────────────────────── */
@@ -477,7 +514,9 @@ STJ.admin.acForm = async function (id) {
   var h = STJ.h;
   var tipos = ['Penal', 'Cível', 'Administrativo', 'Constitucional', 'Laboral', 'Fiscal', 'Outros'];
   var optTipos = tipos.map(function (o) { return '<option' + (ac && ac.tipo === o ? ' selected' : '') + '>' + o + '</option>'; }).join('');
-  return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">' + (ac ? 'Editar Acórdão' : 'Novo Acórdão') + '</span><button class="btn btn-outline btn-sm" onclick="STJ.admin.nav(\'acs-list\')">‹ Voltar</button></div>' +
+  return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">' + (ac ? 'Editar Acórdão' : 'Novo Acórdão') + '</span><div style="display:flex;gap:.5rem">' +
+    (ac ? '<button class="btn btn-outline btn-sm" onclick="STJ.admin.historicoAcordao(\'' + h(ac.id) + '\')">📜 Histórico de Versões</button>' : '') +
+    '<button class="btn btn-outline btn-sm" onclick="STJ.admin.nav(\'acs-list\')">‹ Voltar</button></div></div>' +
     '<div class="adm-body">' +
     '<div class="g2"><div class="f-row"><label for="ac-num">Número do Processo *</label><input type="text" id="ac-num" value="' + h(ac ? ac.numero : '') + '" placeholder="Proc. 154/2026-STJ"></div>' +
     '<div class="f-row"><label for="ac-data">Data *</label><input type="date" id="ac-data" value="' + h(ac ? ac.data : '') + '"></div></div>' +
@@ -515,6 +554,25 @@ STJ.admin._delAc = async function (id, titulo) {
   await STJ.apiAuth('eliminarAcordao', { id: id });
   STJ.toast('Acórdão eliminado.');
   STJ.admin.nav('acs-list');
+};
+
+/** Campos do snapshot de "Acordao" relevantes para a comparação visual. */
+STJ.admin.historicoAcordao = function (id) {
+  STJ.abrirHistoricoVersoes({
+    tipo: 'Acordao',
+    id: id,
+    campos: [
+      { chave: 'titulo', label: 'Título' },
+      { chave: 'estado', label: 'Estado' },
+      { chave: 'relator', label: 'Relator' },
+      { chave: 'sumario', label: 'Sumário' },
+      { chave: 'factos', label: 'Factos Provados' },
+      { chave: 'questoes', label: 'Questões Jurídicas' },
+      { chave: 'fundamentacao', label: 'Fundamentação' },
+      { chave: 'decisao', label: 'Decisão' },
+      { chave: 'artigosAplicados', label: 'Artigos Aplicados' }
+    ]
+  });
 };
 
 /* ── UTILIZADORES (só administradores) — agora por USERNAME ──────── */
