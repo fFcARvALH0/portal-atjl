@@ -116,7 +116,8 @@ button{font-family:'Open Sans',sans-serif}
 
 .art-block{background:var(--white);border:1px solid var(--border);margin-bottom:.5rem;scroll-margin-top:55px}
 .art-block.has-interp{border-left:3px solid var(--red)}
-.art-block-hd{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1.25rem;border-bottom:1px solid var(--border-lt);background:#FAFAFA}
+.art-block-hd{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1.25rem;border-bottom:1px solid var(--border-lt);background:#FAFAFA;flex-wrap:wrap;gap:.5rem}
+.art-block-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .art-block-title{font-size:13.5px;font-weight:700;color:var(--charcoal)}
 .art-block-body{padding:1rem 1.25rem;font-size:13.5px;color:var(--dark);line-height:1.85}
 .art-block-body p{margin-bottom:.5rem}
@@ -127,6 +128,14 @@ button{font-family:'Open Sans',sans-serif}
 .i-key{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem}
 .i-val{font-size:13px;color:var(--dark);line-height:1.7;font-style:italic}
 .interp-hint{padding:.5rem 1.25rem;font-size:11.5px;color:var(--muted);border-top:1px dashed var(--border);font-style:italic}
+
+.cit-panel{margin:.5rem 1.25rem 1rem;border-left:4px solid var(--blue);background:var(--blue-bg);padding:.9rem 1rem}
+.cit-panel-hd{font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.12em;margin-bottom:.7rem}
+.cit-list{display:flex;flex-direction:column;gap:.4rem}
+.cit-item{display:flex;align-items:center;gap:.6rem;background:var(--white);border:1px solid var(--border-lt);border-radius:3px;padding:.5rem .65rem;cursor:pointer;transition:border-color .15s}
+.cit-item:hover,.cit-item:focus-visible{border-color:var(--blue)}
+.cit-item-num{font-size:12px;font-weight:700;color:var(--charcoal);white-space:nowrap}
+.cit-item-tit{font-size:12.5px;color:var(--mid);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .ac-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;background:#FAFAFA;border:1px solid var(--border-lt);padding:1rem 1.25rem;margin-bottom:1rem}
 .ac-sec{background:var(--white);border:1px solid var(--border);margin-bottom:.75rem}
