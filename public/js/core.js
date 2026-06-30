@@ -219,6 +219,26 @@ STJ.exportarPdf = async function (tipo, id) {
   link.click();
 };
 
+/* ── Exportação em lote (seleção múltipla nas listas) ─────────────
+   tipo: 'lei' | 'acordao'. ids: array de IDs selecionados.
+   Gera um único PDF combinado (capa + índice + um documento por
+   página) e despoleta o download — ver lib/pdfExport.js no servidor. */
+STJ.exportarPdfLote = async function (tipo, ids) {
+  if (!ids || !ids.length) { STJ.toast('Selecione pelo menos um documento.'); return; }
+  STJ.toast('A gerar PDF (' + ids.length + ' documento(s))…');
+  var dados;
+  try {
+    dados = await STJ.api('exportarLotePdf', { tipo: tipo, ids: ids });
+  } catch (e) {
+    return; // erro já mostrado em toast por STJ.api
+  }
+  var link = document.createElement('a');
+  link.href = 'data:application/pdf;base64,' + dados.base64;
+  link.download = dados.nomeFicheiro;
+  link.click();
+  STJ.toast('PDF gerado com ' + dados.incluidos + ' documento(s).');
+};
+
 STJ.vistas = {};
 STJ.admin = {};
 
