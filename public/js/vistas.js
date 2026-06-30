@@ -185,12 +185,38 @@ STJ.vistas.leiDetalhe = async function () {
     } else if (hi) {
       interpHTML = '<div class="interp-hint">📌 Este artigo possui interpretação jurisprudencial do STJ</div>';
     }
+
+    var citAberto = STJ.estado.openCitArt === i;
+    var citCache = STJ.estado._citCache || {};
+    var citEstado = citCache[a.id]; // undefined = ainda não pedido, 'loading', ou array
+    var citHTML = '';
+    if (citAberto) {
+      if (citEstado === 'loading' || citEstado === undefined) {
+        citHTML = '<div class="cit-panel"><div class="spinner-line">A procurar acórdãos que citam este artigo…</div></div>';
+      } else if (!citEstado.length) {
+        citHTML = '<div class="cit-panel"><div class="empty-state"><p>Nenhum acórdão cita este artigo, por enquanto.</p></div></div>';
+      } else {
+        citHTML = '<div class="cit-panel" role="region" aria-label="Acórdãos que citam ' + h(a.numero) + '">' +
+          '<div class="cit-panel-hd">🔗 Acórdãos que citam este artigo (' + citEstado.length + ')</div>' +
+          '<div class="cit-list">' + citEstado.map(function (ac) {
+            return '<div class="cit-item" role="button" tabindex="0" onclick="STJ.navegar(\'acordao-detalhe\',{currentAcId:\'' + h(ac.id) + '\'})" onkeydown="if(event.key===\'Enter\')STJ.navegar(\'acordao-detalhe\',{currentAcId:\'' + h(ac.id) + '\'})">' +
+              '<span class="cit-item-num">' + h(ac.numero) + '</span>' +
+              '<span class="cit-item-tit">' + h(ac.titulo || '') + '</span>' +
+              STJ.stBadge(ac.estado) +
+              '</div>';
+          }).join('') + '</div></div>';
+      }
+    }
+
     corpo += '<div class="art-block' + (hi ? ' has-interp' : '') + '" id="art-' + i + '">' +
       '<div class="art-block-hd"><div class="art-block-title">' + h(a.numero) + (a.titulo ? ' — ' + h(a.titulo) : '') + '</div>' +
+      '<div class="art-block-actions">' +
       (hi ? '<button class="btn btn-outline btn-sm" onclick="STJ.vistas._toggleInterp(' + i + ')" aria-expanded="' + io + '" aria-controls="interp-' + i + '">' + (io ? '▲ Fechar' : '⚖ Ver Interpretação') + '</button>'
-        : '<span style="font-size:11px;color:var(--muted)">Sem interpretação</span>') + '</div>' +
+        : '<span style="font-size:11px;color:var(--muted)">Sem interpretação</span>') +
+      '<button class="btn btn-outline btn-sm" onclick="STJ.vistas._toggleCitacoes(' + i + ',\'' + h(a.id) + '\')" aria-expanded="' + citAberto + '">' + (citAberto ? '▲ Fechar' : '🔗 Quem cita este artigo') + '</button>' +
+      '</div></div>' +
       '<div class="art-block-body">' + STJ.nl2p(a.texto || '') + '</div>' +
-      interpHTML + '</div>';
+      interpHTML + citHTML + '</div>';
   });
   if (!arts.length) corpo = '<div class="panel"><div class="empty-state"><p>Sem artigos. Use a importação em lote na Área Reservada.</p></div></div>';
 
@@ -236,6 +262,33 @@ STJ.vistas._toggleInterp = function (i) {
       var el = document.getElementById('art-' + i);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  });
+};
+
+/* Abre/fecha o painel "Quem cita este artigo" para o artigo no índice i
+   da lei atual. Os resultados são pedidos uma única vez por artigo e
+   guardados em STJ.estado._citCache (chave = id do artigo) para que
+   reabrir o painel não dispare um novo pedido à API. */
+STJ.vistas._toggleCitacoes = async function (i, artigoId) {
+  if (STJ.estado.openCitArt === i) {
+    STJ.estado.openCitArt = null;
+    STJ.render();
+    return;
+  }
+  STJ.estado.openCitArt = i;
+  if (!STJ.estado._citCache) STJ.estado._citCache = {};
+  if (!(artigoId in STJ.estado._citCache)) {
+    STJ.estado._citCache[artigoId] = 'loading';
+    STJ.render();
+    var lista = [];
+    try {
+      lista = (await STJ.api('obterCitantesArtigo', { artigoId: artigoId })) || [];
+    } catch (e) { lista = []; }
+    STJ.estado._citCache[artigoId] = lista;
+  }
+  STJ.render().then(function () {
+    var el = document.getElementById('art-' + i);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 };
 
