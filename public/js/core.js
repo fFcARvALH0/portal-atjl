@@ -161,6 +161,11 @@ STJ.render = async function () {
       default:                html = await STJ.vistas.home();
     }
     m.innerHTML = html;
+    if (STJ._posRenderFn) {
+      var _prf = STJ._posRenderFn;
+      STJ._posRenderFn = null;
+      requestAnimationFrame(function () { try { _prf(); } catch (e) { console.warn('posRender:', e); } });
+    }
   } catch (e) {
     if (STJ.estado.vista === 'admin' && STJ.estado.adminTab !== 'leis-list') {
       STJ.estado.adminTab = 'leis-list';

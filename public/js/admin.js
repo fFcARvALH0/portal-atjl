@@ -227,44 +227,91 @@ STJ.admin.importar = async function () {
   }
 
   if (step === 2) {
-    var parsed = STJ.estado.importParsed || [];
-    var st = { art: parsed.length, grupos: new Set(parsed.map(function (a) { return a.grupoNum; }).filter(Boolean)).size, caps: new Set(parsed.map(function (a) { return a.capNum; }).filter(Boolean)).size };
+    var parseResult = STJ.estado.importParseResult || {};
+    var parsed = parseResult.artigos || [];
+    var avisos = parseResult.avisos || [];
+    var stats = parseResult.estatisticas || {};
     var lei = (leis || []).find(function (l) { return l.id === leiId; });
+    var h = STJ.h;
+
+    // ── Painel de avisos (erros de validação heurística)
+    var avisosHTML = '';
+    if (avisos.length) {
+      var erros = avisos.filter(function(a){return a.severidade==='erro';});
+      var warns = avisos.filter(function(a){return a.severidade==='aviso';});
+      var infos  = avisos.filter(function(a){return a.severidade==='info';});
+      avisosHTML = '<div class="import-avisos">';
+      erros.forEach(function(a){ avisosHTML += '<div class="aviso aviso-erro">❌ ' + h(a.mensagem) + '</div>'; });
+      warns.forEach(function(a){ avisosHTML += '<div class="aviso aviso-warn">⚠ ' + h(a.mensagem) + '</div>'; });
+      infos.forEach(function(a){  avisosHTML += '<div class="aviso aviso-info">ℹ ' + h(a.mensagem) + '</div>'; });
+      avisosHTML += '</div>';
+    }
+
+    // ── Pré-visualização hierárquica dos artigos
     var grHTML = '';
     var ultiGr = null;
     parsed.forEach(function (a) {
       var grKey = (a.grupoTipo || '') + '|' + (a.grupoNum || '') + '|' + (a.capNum || '');
       if (grKey !== ultiGr) {
         if (ultiGr !== null) grHTML += '</div>';
-        var lbl = a.grupoTipo ? ((a.grupoTipo || '') + ' ' + (a.grupoNum || '') + (a.grupoTit ? ' — ' + a.grupoTit : '')) : (a.capNum ? ('Capítulo ' + a.capNum + (a.capTit ? ' — ' + a.capTit : '')) : 'Artigos (sem grupo)');
+        var lbl = a.grupoTipo
+          ? ((a.grupoTipo || '') + ' ' + (a.grupoNum || '') + (a.grupoTit ? ' — ' + a.grupoTit : ''))
+          : (a.capNum ? ('Capítulo ' + a.capNum + (a.capTit ? ' — ' + a.capTit : '')) : 'Artigos gerais');
         grHTML += '<div class="pp-group"><div class="pp-group-hd"><span style="font-size:12.5px;font-weight:700;color:var(--charcoal)">📂 ' + h(lbl) + '</span></div>';
         ultiGr = grKey;
       }
-      grHTML += '<div class="pp-art"><span class="pp-art-n">' + h(a.numero) + '</span><div><div style="font-size:12px;color:var(--dark)">' + h(a.titulo || '(sem epígrafe)') + '</div><div style="font-size:11px;color:var(--muted)">' + h((a.texto || '').substring(0, 100)) + (a.texto && a.texto.length > 100 ? '…' : '') + '</div></div></div>';
+      var nTabs = a.tabelas ? a.tabelas.length : 0;
+      var nNums = a.numeros ? a.numeros.length : 0;
+      grHTML += '<div class="pp-art">' +
+        '<span class="pp-art-n">' + h(a.numero) + '</span>' +
+        '<div>' +
+          '<div style="font-size:12px;color:var(--dark)">' + h(a.titulo || '(sem epígrafe)') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">' + h((a.texto || '').substring(0, 120)) + (a.texto && a.texto.length > 120 ? '…' : '') + '</div>' +
+          (nNums ? '<span style="font-size:10px;background:var(--blue-bg,#eef2ff);color:var(--blue,#3b4cca);border-radius:3px;padding:1px 5px;margin-right:4px">' + nNums + ' n.º</span>' : '') +
+          (nTabs ? '<span style="font-size:10px;background:#f0fdf4;color:#16a34a;border-radius:3px;padding:1px 5px">' + nTabs + ' tabela(s)</span>' : '') +
+        '</div></div>';
     });
     if (ultiGr !== null) grHTML += '</div>';
 
+    // ── Painel de anexos
+    var anexosHTML = '';
+    if ((parseResult.anexos || []).length) {
+      anexosHTML = '<div style="margin:0 0 .75rem;padding:.6rem .8rem;background:var(--blue-bg,#eef2ff);border-radius:6px;font-size:12.5px">' +
+        '📎 <strong>' + parseResult.anexos.length + ' Anexo(s)/Apêndice(s)</strong> detetado(s): ' +
+        parseResult.anexos.map(function(an){ return h((an.tipo||'ANEXO') + (an.numero ? ' '+an.numero : '') + (an.titulo ? ' — '+an.titulo : '')); }).join(', ') + '</div>';
+    }
+
     return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">Importar Documento</span></div>' + wiz('done', 'active', '') +
       '<div class="parse-stats">' +
-      '<span class="pstat">Lei: <strong>' + h(lei ? lei.titulo : '—') + '</strong></span>' +
-      '<span class="pstat">Títulos: <strong>' + st.grupos + '</strong></span>' +
-      '<span class="pstat">Capítulos: <strong>' + st.caps + '</strong></span>' +
-      '<span class="pstat">Artigos: <strong>' + st.art + '</strong></span></div>' +
-      (parsed.length ? '<div class="parse-preview">' + grHTML + '</div>' : '<div style="padding:1.5rem;background:var(--orange-bg);color:var(--orange);font-size:13px">⚠ Nenhum artigo detetado. Verifique se o texto contém "Artigo X.º".</div>') +
-      '<div style="padding:1rem;display:flex;gap:.5rem"><button class="btn btn-outline" onclick="STJ.estado.importStep=1;STJ.render()">‹ Voltar</button>' +
-      (parsed.length ? '<button class="btn btn-red btn-lg" onclick="STJ.estado.importStep=3;STJ.render()">Confirmar Estrutura →</button>' : '') + '</div></div>';
+        '<span class="pstat">Lei: <strong>' + h(lei ? lei.titulo : '—') + '</strong></span>' +
+        '<span class="pstat">Artigos: <strong>' + (stats.totalArtigos || 0) + '</strong></span>' +
+        '<span class="pstat">Capítulos: <strong>' + (stats.totalCapitulos || 0) + '</strong></span>' +
+        (stats.totalSeccoes ? '<span class="pstat">Secções: <strong>' + stats.totalSeccoes + '</strong></span>' : '') +
+        (stats.totalAnexos ? '<span class="pstat">Anexos: <strong>' + stats.totalAnexos + '</strong></span>' : '') +
+        (stats.totalTabelas ? '<span class="pstat">Tabelas: <strong>' + stats.totalTabelas + '</strong></span>' : '') +
+        '<span class="pstat" style="color:var(--muted)">⏱ ' + (stats.tempoMs || 0) + 'ms</span>' +
+      '</div>' +
+      avisosHTML +
+      (parsed.length
+        ? anexosHTML + '<div class="parse-preview">' + grHTML + '</div>'
+        : '<div style="padding:1.5rem;background:var(--orange-bg);color:var(--orange);font-size:13px">⚠ Nenhum artigo detetado. Verifique se o texto contém epígrafes como «Artigo 1.º».</div>') +
+      '<div style="padding:1rem;display:flex;gap:.5rem">' +
+        '<button class="btn btn-outline" onclick="STJ.estado.importStep=1;STJ.render()">‹ Voltar</button>' +
+        (parsed.length ? '<button class="btn btn-red btn-lg" onclick="STJ.estado.importStep=3;STJ.render()">Confirmar Estrutura →</button>' : '') +
+      '</div></div>';
   }
 
   if (step === 3) {
     var lei3 = (leis || []).find(function (l) { return l.id === leiId; });
+    var totalArt3 = ((STJ.estado.importParseResult || {}).artigos || []).length;
     return '<div class="adm-panel"><div class="adm-hd"><span class="adm-title">Importar Documento</span></div>' + wiz('done', 'done', 'active') +
       '<div class="adm-body">' +
       '<div style="background:#FAFAFA;border:1px solid var(--border);border-left:4px solid var(--red);padding:1.1rem;margin-bottom:1rem;font-size:13.5px;line-height:1.8">' +
       'Lei: <strong>' + h(lei3 ? lei3.titulo : '—') + '</strong><br>' +
-      'Artigos a importar: <strong>' + (STJ.estado.importParsed || []).length + '</strong><br>' +
+      'Artigos a importar: <strong>' + totalArt3 + '</strong><br>' +
       '<span style="color:var(--orange)">⚠ Qualquer artigo existente nesta lei será <strong>substituído</strong>.</span></div>' +
       '<div style="display:flex;gap:.5rem"><button class="btn btn-outline btn-lg" onclick="STJ.estado.importStep=2;STJ.render()">‹ Rever</button>' +
-      '<button class="btn btn-red btn-lg" onclick="STJ.admin._confirmarImport()">✅ Importar ' + (STJ.estado.importParsed || []).length + ' Artigos</button></div>' +
+      '<button class="btn btn-red btn-lg" onclick="STJ.admin._confirmarImport()">✅ Importar ' + totalArt3 + ' Artigos</button></div>' +
       '</div></div>';
   }
   return '';
@@ -272,22 +319,30 @@ STJ.admin.importar = async function () {
 
 STJ.admin._importarPasso2 = async function () {
   var leiId = STJ.gv('imp-lei') || STJ.estado.importLeiId;
-  if (!leiId) { STJ.toast('Selecione uma lei.'); return; }
+  if (!leiId) { STJ.toast('Selecione uma lei de destino.'); return; }
   var txt = STJ.g('imp-text');
-  if (!txt) { STJ.toast('Introduza o texto ou carregue um ficheiro.'); return; }
+  if (!txt || !txt.trim()) { STJ.toast('Introduza o texto ou carregue um ficheiro.'); return; }
   STJ.estado.importLeiId = leiId;
-  var parsed = await STJ.api('analisarDocumento', { texto: txt });
-  STJ.estado.importParsed = parsed;
+  STJ.toast('A analisar documento…');
+  var resultado = await STJ.api('analisarDocumento', { texto: txt });
+  // O parser devolve agora { artigos, avisos, estatisticas, anexos, arvore }.
+  // Guardamos o resultado completo para a pré-visualização e os artigos
+  // separados para a chamada de importação.
+  STJ.estado.importParseResult = resultado;
+  STJ.estado.importParsed = resultado.artigos || [];
   STJ.estado.importStep = 2;
   STJ.render();
 };
 
 STJ.admin._confirmarImport = async function () {
   var leiId = STJ.estado.importLeiId;
-  if (!leiId || !STJ.estado.importParsed) { STJ.toast('Dados em falta.'); return; }
-  await STJ.apiAuth('importarArtigos', { leiId: leiId, listaArtigos: STJ.estado.importParsed });
-  STJ.toast('✅ ' + STJ.estado.importParsed.length + ' artigos importados.');
-  STJ.estado.importStep = 1; STJ.estado.importParsed = null;
+  var artigos = STJ.estado.importParsed;
+  if (!leiId || !artigos || !artigos.length) { STJ.toast('Dados em falta ou nenhum artigo para importar.'); return; }
+  await STJ.apiAuth('importarArtigos', { leiId: leiId, listaArtigos: artigos });
+  STJ.toast('✅ ' + artigos.length + ' artigos importados com sucesso.');
+  STJ.estado.importStep = 1;
+  STJ.estado.importParsed = null;
+  STJ.estado.importParseResult = null;
   STJ.admin.nav('artigos');
 };
 
@@ -347,15 +402,44 @@ STJ.admin._lerPdf = function (file) {
       var pagePromises = [];
       for (var i = 1; i <= pdf.numPages; i++) {
         pagePromises.push(pdf.getPage(i).then(function (page) {
-          return page.getTextContent().then(function (tc) {
-            var linhasPorY = {};
+          return page.getTextContent({ normalizeWhitespace: true }).then(function (tc) {
+            // ── Agrupa itens por linha lógica (tolerância de 2px no eixo Y)
+            var linhasMap = {};
             tc.items.forEach(function (item) {
-              var y = Math.round(item.transform[5]);
-              if (!linhasPorY[y]) linhasPorY[y] = [];
-              linhasPorY[y].push(item.str);
+              var y = Math.round(item.transform[5] / 2) * 2; // arredonda a 2px
+              if (!linhasMap[y]) linhasMap[y] = [];
+              linhasMap[y].push({ x: item.transform[4], str: item.str, w: item.width || 0 });
             });
-            return Object.keys(linhasPorY).map(Number).sort(function (a, b) { return b - a; })
-              .map(function (y) { return linhasPorY[y].join(''); }).join('\n');
+
+            // ── Ordena eixo Y decrescente (topo → fundo) e itens por X crescente
+            var ys = Object.keys(linhasMap).map(Number).sort(function (a, b) { return b - a; });
+            var linhas = ys.map(function (y) {
+              var itens = linhasMap[y].sort(function (a, b) { return a.x - b.x; });
+              // Detecta lacuna horizontal grande (>1.5× espaço médio) = coluna separada
+              var textos = [];
+              var xAnt = -Infinity;
+              itens.forEach(function (it) {
+                if (xAnt > -Infinity && it.x - xAnt > 40) textos.push('\t');
+                textos.push(it.str);
+                xAnt = it.x + it.w;
+              });
+              return textos.join('').replace(/\s{2,}/g, ' ').trim();
+            }).filter(function (l) { return l.length > 0; });
+
+            // ── Junta palavras partidas por hífen de fim de linha
+            var resultado = [];
+            for (var j = 0; j < linhas.length; j++) {
+              var atual = linhas[j];
+              var prox = linhas[j + 1];
+              if (prox && /[a-zA-ZÀ-ÿ]-$/.test(atual) && /^[a-záàãâéêíóôõúü]/i.test(prox)) {
+                resultado.push(atual.slice(0, -1) + prox.split(/\s/)[0]);
+                linhas[j + 1] = prox.replace(/^\S+\s*/, '');
+                if (!linhas[j + 1]) j++;
+              } else {
+                resultado.push(atual);
+              }
+            }
+            return resultado.join('\n');
           });
         }));
       }

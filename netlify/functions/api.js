@@ -175,7 +175,11 @@ const ACOES_PUBLICAS = {
   },
 
   pesquisar: async ({ query, filtros }) => searchEngine.pesquisarPortal(query, filtros),
-  analisarDocumento: async ({ texto }) => parser.analisarDocumento(texto),
+  analisarDocumento: async ({ texto }) => {
+    // Devolve o resultado completo: { artigos, arvore, anexos, avisos, estatisticas, logs }
+    // O admin.js (frontend) consome os campos adicionais para pré-visualização e avisos.
+    return parser.analisarDocumento(texto);
+  },
 
   login: async ({ username, password }) => auth.autenticar(username, password),
   logout: async ({ token }) => auth.terminarSessao(token),
