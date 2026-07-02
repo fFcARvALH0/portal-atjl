@@ -3,13 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Portal de Legislação e Jurisprudência do Supremo Tribunal de Justiça">
+  <meta name="theme-color" content="#B71C1C">
   <title>Portal de Legislação e Jurisprudência — Supremo Tribunal de Justiça</title>
+
+  <!-- Preconnect para Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&family=Merriweather:wght@400;700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="/css/estilos.css">
+
+  <!--
+    ARQUITETURA REFATORADA — ES Modules
+    Substituição de core.js + vistas.js + admin.js por:
+      /js/main.js (entry point — importa todos os módulos)
+    Os scripts legados foram mantidos em /js/legacy/ para referência,
+    mas não são carregados. O módulo main.js reconstrói a interface
+    window.STJ para compatibilidade com os handlers inline.
+  -->
 </head>
 <body>
+  <!-- Acessibilidade: saltar para o conteúdo -->
   <a href="#main" class="skip-link">Saltar para o conteúdo principal</a>
 
+  <!-- Topbar -->
   <div id="topbar">
     <button class="logo-wrap" onclick="STJ.navegar('home')" aria-label="Ir para a página inicial">
       <span class="logo-icon" aria-hidden="true">STJ</span>
@@ -21,10 +39,15 @@
     </button>
     <div class="topbar-right">
       <span id="utilizador-info" style="font-size:12px;color:var(--mid);display:none"></span>
-      <button class="topbar-link" onclick="STJ.navegar('admin')" title="Acesso para magistrados e funcionários autorizados">Área Reservada</button>
+      <button class="topbar-link"
+        onclick="STJ.navegar(STJ.estado.sessao ? 'admin-leis' : 'admin-login')"
+        title="Acesso para magistrados e funcionários autorizados">
+        Área Reservada
+      </button>
     </div>
   </div>
 
+  <!-- Hero -->
   <div id="hero">
     <div>
       <div class="hero-label">Supremo Tribunal de Justiça</div>
@@ -32,27 +55,43 @@
     </div>
   </div>
 
+  <!-- Navegação principal -->
   <nav id="navbar" aria-label="Navegação principal">
     <div class="nav-items">
-      <button class="nav-btn active" data-view="home" onclick="STJ.navegar('home')">Início</button>
-      <button class="nav-btn" data-view="legislacao" onclick="STJ.navegar('legislacao')">Legislação</button>
-      <button class="nav-btn" data-view="jurisprudencia" onclick="STJ.navegar('jurisprudencia')">Jurisprudência</button>
-      <button class="nav-btn" data-view="pesquisa" onclick="STJ.navegar('pesquisa')">Pesquisa Avançada</button>
+      <button class="nav-btn active" data-view="home"           onclick="STJ.navegar('home')">Início</button>
+      <button class="nav-btn"        data-view="legislacao"     onclick="STJ.navegar('legislacao')">Legislação</button>
+      <button class="nav-btn"        data-view="jurisprudencia" onclick="STJ.navegar('jurisprudencia')">Jurisprudência</button>
+      <button class="nav-btn"        data-view="pesquisa"       onclick="STJ.navegar('pesquisa')">Pesquisa Avançada</button>
     </div>
   </nav>
 
-  <main id="main" role="main" aria-live="polite"></main>
+  <!-- Conteúdo principal -->
+  <main id="main" role="main" aria-live="polite" aria-atomic="false"></main>
 
-  <footer style="text-align:center;padding:1.5rem;font-size:11px;color:var(--muted)">
-    Supremo Tribunal de Justiça · República Portucalense<br>
-    <a href="#" onclick="STJ.navegar('privacidade');return false" style="color:var(--red);font-weight:600">Política de Privacidade (RGPD)</a>
+  <!-- Rodapé -->
+  <footer>
+    <div style="text-align:center;padding:1.5rem;font-size:11px;color:var(--muted)">
+      Supremo Tribunal de Justiça · República Portucalense<br>
+      <a href="#" onclick="STJ.navegar('privacidade');return false"
+        style="color:var(--red);font-weight:600">Política de Privacidade (RGPD)</a>
+    </div>
   </footer>
 
-  <div class="toast" id="toast" role="status" aria-live="assertive"></div>
+  <!--
+    NOTA: O #toast antigo foi substituído por #toast-container criado
+    dinamicamente pelo componente js/components/toast.js.
+    Mantém-se este div vazio para compatibilidade com CSS existente.
+  -->
+  <div id="toast" role="status" aria-live="assertive" style="display:none"></div>
 
-  <script src="/js/core.js"></script>
-  <script src="/js/vistas.js"></script>
-  <script src="/js/admin.js"></script>
-  <script>document.addEventListener('DOMContentLoaded', STJ.iniciar);</script>
+  <!--
+    Entry point ES Module.
+    type="module" garante:
+      • Carregamento diferido (equivalente a defer)
+      • Scope isolado (sem variáveis globais acidentais)
+      • Suporte a import/export nativo
+      • Strict mode automático
+  -->
+  <script type="module" src="/js/main.js"></script>
 </body>
 </html>
